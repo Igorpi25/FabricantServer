@@ -7,7 +7,7 @@ require_once dirname(__FILE__).'/include/PassHash.php';
 require_once dirname(__FILE__).'/libs/Slim/Slim.php';
 require_once dirname(__FILE__).'/communicator/WebsocketClient.php';
 
-define('WEBSOCKET_SERVER_PORT', 8001);
+define('WEBSOCKET_SERVER_PORT', 8666);
 
  
 \Slim\Slim::registerAutoloader();
@@ -668,7 +668,7 @@ $app->get('/communicator/start', 'authenticate', function () use ($app)  {
 	
 	$config = array(
 		'pid' => 'communicator/out/websocket_pid.txt',
-		'websocket' => 'tcp://0.0.0.0:8001',
+		'websocket' => 'tcp://0.0.0.0:'.WEBSOCKET_SERVER_PORT,
 		'log' => 'communicator/out/websocket_log.txt'
 	);
 	

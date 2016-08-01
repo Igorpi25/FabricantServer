@@ -8,7 +8,7 @@
 define('DB_USERNAME', 'igor');//MySql user login
 define('DB_PASSWORD', 'eY2vHmju');//Set password for mysql user
 define('DB_HOST', 'localhost');//You should set here your  own host name. Ususally used 'localhost'
-define('DB_NAME', 'igorserver');//date-base name used in mysql
+define('DB_NAME', 'fabricant');//date-base name used in mysql
  
 define('USER_CREATED_SUCCESSFULLY', 0);
 define('USER_CREATE_FAILED', 1);
@@ -26,6 +26,6 @@ define("path_fulls", path_images.'/fulls/');
 define("path_avatars", path_images.'/avatars/');
 define("path_icons", path_images.'/icons/');
 
-define("URL_HOME","http://igorpi25.ru");//set here your domen home url
+define("URL_HOME","http://igorserver.ru");//set here your domen home url
 
 ?>

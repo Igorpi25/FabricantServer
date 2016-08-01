@@ -5,7 +5,7 @@ error_reporting(E_ALL);
 /*
 config: array
 pid: string - file's name where will be saved pid(process id) 
-websocket: string - tcp://[ip]:[port] ,example: tcp://127.0.0.1:8000
+websocket: string - tcp://[ip]:[port] ,example: tcp://127.0.0.1:8666
 log: string - file's name to save logs
 */
 
@@ -14,6 +14,7 @@ define("TRANSPORT_NOTIFICATION",100);
 define("TRANSPORT_TEXT",1);
 define("TRANSPORT_MAP",2);
 define("TRANSPORT_PROFILE",3);
+define("TRANSPORT_FABRICANT",4);
 
 //------------------Map message constants ------------------------
 define("OUTGOING_START_BROADCAST", 1);
@@ -55,6 +56,15 @@ define("GROUPSTATUS_LEAVE", 5);
 define("GROUPSTATUS_REMOVED", 6);
 define("GROUPSTATUS_NOT_IN_GROUP", 7);
 
+//-----------------Fabricant message constants -----------------
+
+define("OUTGOING_CHECK_CONNECTION", 0);
+define("OUTGOING_PRODUCTS_DELTA", 1);
+define("OUTGOING_ORDERS_DELTA", 2);
+
+define("INCOMING_CHECK_CONNECTION", 0);
+
+
 //-------------------Console-----------------------------------------
 
 define("CONSOLE_OPERATION_USER_CHANGED", 0);
@@ -70,7 +80,7 @@ public $connects=array();
 
 public $recievers=array();
 
-public $db_chat,$db_profile,$db_map;
+public $db_chat,$db_profile,$db_map, $db_fabricant;
 
 public function __construct($config) {
         $this->config = $config;
@@ -78,6 +88,7 @@ public function __construct($config) {
 		require_once dirname(__FILE__)."/../include/DbHandlerChat.php";
 		require_once dirname(__FILE__)."/../include/DbHandlerProfile.php";
 		require_once dirname(__FILE__)."/../include/DbHandlerMap.php";
+		require_once dirname(__FILE__)."/../include/DbHandlerFabricant.php";
         
 		require_once dirname(__FILE__)."/../include/Config.php";
 		require_once dirname(__FILE__)."/../include/DbConnect.php";
@@ -102,6 +113,7 @@ public function __construct($config) {
 		$this->db_chat = new DbHandlerChat($mysqli);
 		$this->db_profile = new DbHandlerProfile($mysqli);
 		$this->db_map = new DbHandlerMap($mysqli);
+		$this->db_fabricant = new DbHandlerFabricant($mysqli);
 }
 
 public function Start(){
@@ -202,6 +214,57 @@ public function Stop(){
         }
 }
      
+//--------------------Функции протокола Fabricant ---------------------
+
+protected function outgoingProductsDelta($connect,$timestamp){
+	
+    // Listing users have changed since $timestamp 
+		
+    $result = $this->db_fabricant->getProductsDelta($timestamp);
+ 	    
+ 	$json = array();
+    $json["transport"]=TRANSPORT_FABRICANT;
+	$json["type"]=OUTGOING_PRODUCTS_DELTA;
+	$json["last_timestamp"]=time();	
+    $json["products"]=$result;
+	
+	$data_string=json_encode($json);
+	
+	fwrite($connect, $this->encode($data_string));	
+	
+    $this->log("outgoingProductsDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+}
+
+protected function outgoingCheckConnection($connect){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_FABRICANT;
+	$json["type"]=OUTGOING_CHECK_CONNECTION;
+	$json["last_timestamp"]=time();	
+    $json["message"]="Hello, Igor. Не печалься, скоро будет все!";
+	
+	$data_string=json_encode($json);
+	
+	fwrite($connect, $this->encode($data_string));	
+	
+    $this->log("outgoingProductsDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+}
+
+protected function ProcessMessageFabricant($sender,$connects,$json) {
+	
+	$this->log("ProcessMessageFabricant. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json));
+		
+	switch($json["type"]){
+		case INCOMING_CHECK_CONNECTION :			
+		
+			$this->outgoingCheckConnection($sender);
+			
+		break;			
+		
+	}
+	
+}
+	 	
 //--------------------Функции протокола Profile (profile protocol methods)---------------------
 
 protected function outgoingUsersDelta($connect,$timestamp){
@@ -1305,13 +1368,17 @@ protected function onOpen($connect, $info) {
 	//------------Map------------------
 	
 	$this->outgoingStartBroadcast($connect);
-	
+		
 	//----------Profile--------------------------
 	
 	$this->outgoingUsersDelta($connect,$info["last_timestamp"]);	
 	$this->outgoingGroupsDelta($connect,$info["last_timestamp"]);
 	$this->outgoingGroupUsersDelta($connect,$info["last_timestamp"]);
 	$this->outgoingGroupmatesDelta($connect,$info["last_timestamp"]);
+	
+	//----------Fabricant--------------------------
+	
+	$this->outgoingProductsDelta($connect,$info["last_timestamp"]);
 	
 }
 
@@ -1345,6 +1412,11 @@ protected function onMessage($sender,$connects,$data) {
 			
 			case TRANSPORT_PROFILE:{
 				$this->ProcessMessageProfile($sender,$connects,$json);
+				break;
+			}
+			
+			case TRANSPORT_FABRICANT:{
+				$this->ProcessMessageFabricant($sender,$connects,$json);
 				break;
 			}
 		}
