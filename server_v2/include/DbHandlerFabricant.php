@@ -109,16 +109,16 @@ class DbHandlerFabricant extends DbHandler{
             
             $stmt->fetch();
             
-	            $res= array();
-	            $res["id"] = $id;
-				$res["contractorid"] = $contractorid;
-	            $res["name"] = $name;
-	            $res["status"] = $status;
-				$res["price"] = $price;
-				$res["info"] = $info;
+			$res= array();
+			$res["id"] = $id;
+			$res["contractorid"] = $contractorid;
+			$res["name"] = $name;
+			$res["status"] = $status;
+			$res["price"] = $price;
+			$res["info"] = $info;
 
-	            $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
-				$res["changed_at"] = $timestamp_object->getTimestamp();	
+			$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+			$res["changed_at"] = $timestamp_object->getTimestamp();	
 	            
             $stmt->close();
             return $res;
@@ -186,6 +186,7 @@ class DbHandlerFabricant extends DbHandler{
 	            $res["status"] = $status;
 				$res["price"] = $price;
 				$res["info"] = $info;
+				//$res["info"] = '{"name":{"text":"ФИТНЕС ХЛЕБ МИЛЕДИ"},"name_full":{"text":"ФИТНЕС ХЛЕБ МИЛЕДИ"},"price":104,"summary":{"text":"В одной упаковке входят 5 булок. 1 булка – 90 г., размером 20х6х4 см. Фитнес хлеб полезен для пищеварения, здоровья, так как не содержит жиров, дрожжей. В сочетании с кашами будет питательным и малокалорийным завтраком не только для женщин, но и для всей семьи."},"icon":{"image_url":"http://igorserver.ru/v2/images/products/41_20_icon.jpg"},"details":[{"title":{"text":"Вес"},"photo":{"visible":false},"value":{"text":"90 г. (1 штука)"},"type":1},{"title":{"text":"Состав"},"photo":{"visible":false},"value":{"text":"Мука пшеничная хлебопекарная в/с, кунжут, смесь МИЛЕДИ, вода (фильтрованная)."},"type":1},{"title":{"text":"Пищевая ценность в 100 г."},"photo":{"visible":false},"value":{"text":"Белки – 10,4 г, жиры – 9,8 г, углеводы – 37,7 г"},"type":1},{"title":{"text":"Срок годности"},"photo":{"visible":false},"value":{"text":"72 часов t° хранения 18± 3C"},"type":1}]}';
 
 	            $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 				$res["changed_at"] = $timestamp_object->getTimestamp();	

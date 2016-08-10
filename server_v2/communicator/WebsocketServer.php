@@ -56,6 +56,10 @@ define("GROUPSTATUS_LEAVE", 5);
 define("GROUPSTATUS_REMOVED", 6);
 define("GROUPSTATUS_NOT_IN_GROUP", 7);
 
+define("GROUP_STATUS_DEFAULT", 0);
+define("GROUP_STATUS_CONTRACTOR", 1);
+define("GROUP_STATUS_CUSTOMER", 2);
+
 //-----------------Fabricant message constants -----------------
 
 define("OUTGOING_CHECK_CONNECTION", 0);
@@ -228,11 +232,10 @@ protected function outgoingProductsDelta($connect,$timestamp){
 	$json["last_timestamp"]=time();	
     $json["products"]=$result;
 	
-	$data_string=json_encode($json);
-	
+	$data_string=json_encode($json,JSON_UNESCAPED_UNICODE);
+	$this->log("outgoingProductsDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".$data_string);        
 	fwrite($connect, $this->encode($data_string));	
-	
-    $this->log("outgoingProductsDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+    //$this->log("outgoingProductsDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=(too long string)");        
 }
 
 protected function outgoingCheckConnection($connect){
@@ -242,6 +245,7 @@ protected function outgoingCheckConnection($connect){
 	$json["type"]=OUTGOING_CHECK_CONNECTION;
 	$json["last_timestamp"]=time();	
     $json["message"]="Hello, Igor. Не печалься, скоро будет все!";
+	
 	
 	$data_string=json_encode($json);
 	
@@ -1365,9 +1369,13 @@ protected function onOpen($connect, $info) {
 		//$messages=$this->db_chat->getLast20GroupMessagesOfUser($userid);	
 	}
 	
+	//----------Fabricant--------------------------
+	
+	$this->outgoingProductsDelta($connect,$info["last_timestamp"]);
+	
 	//------------Map------------------
 	
-	$this->outgoingStartBroadcast($connect);
+	//$this->outgoingStartBroadcast($connect);
 		
 	//----------Profile--------------------------
 	
@@ -1376,9 +1384,7 @@ protected function onOpen($connect, $info) {
 	$this->outgoingGroupUsersDelta($connect,$info["last_timestamp"]);
 	$this->outgoingGroupmatesDelta($connect,$info["last_timestamp"]);
 	
-	//----------Fabricant--------------------------
 	
-	$this->outgoingProductsDelta($connect,$info["last_timestamp"]);
 	
 }
 
