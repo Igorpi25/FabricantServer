@@ -39,7 +39,8 @@ if ( isset($_SESSION['apiKey']) && $db->isValidApiKey($_SESSION['apiKey']) ) {
 	$user=$db->getUserById($res["id"]);
 	
 	echo '<div class="pull-right" style="padding-right:30px;">';
-	echo '	<img src="'.$user["avatars"]["icon"].'" style="width: 30px; height: 30px; margin-right:5px;" alt="No icon">'.$user["name"].' <a href="?action=logout">(logout)</a></br>';
+	//echo '	<img src="'.$user["avatars"]["icon"].'" style="width: 30px; height: 30px; margin-right:5px;" alt="No icon">'.$user["name"].' <a href="?action=logout">(logout)</a></br>';
+	echo '	<img src="" style="width: 30px; height: 30px; margin-right:5px;" alt="No icon">'.$user["name"].' <a href="?action=logout">(logout)</a></br>';
 	echo '</div>';
 	
 }else{

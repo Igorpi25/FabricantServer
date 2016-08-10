@@ -96,67 +96,59 @@ class DbHandlerFabricant extends DbHandler{
         }
     }
 	
-	public function getProductsOfContractor($contractorid) {
-        
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.contractorid = ?");
-        $stmt->bind_param("i", $contractorid);
-        if ($stmt->execute()) {
-        
+	public function getProductsOfContractor($contractorid){
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.contractorid=? AND p.status=1");
+		$stmt->bind_param("i", $contractorid);
+		if ($stmt->execute()){
 			$stmt->store_result();
-            if($stmt->num_rows==0)return NULL;
-            
-            $stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at);            
-            
-            $stmt->fetch();
-            
-			$res= array();
-			$res["id"] = $id;
-			$res["contractorid"] = $contractorid;
-			$res["name"] = $name;
-			$res["status"] = $status;
-			$res["price"] = $price;
-			$res["info"] = $info;
-
-			$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
-			$res["changed_at"] = $timestamp_object->getTimestamp();	
-	            
-            $stmt->close();
-            return $res;
-        } else {
-            return NULL;
-        }
-    }
-	
-	public function getAllProducts() {
-        
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p");
-        if ($stmt->execute()) {
-        
-			$stmt->store_result();
-            if($stmt->num_rows==0)return NULL;
-            
-            $stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at);            
-            
-            $stmt->fetch();
-            
-	            $res= array();
-	            $res["id"] = $id;
+			if($stmt->num_rows==0) return NULL;
+			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at);
+			$result=array();
+			while($stmt->fetch()){
+				$res=array();
+				$res["id"] = $id;
 				$res["contractorid"] = $contractorid;
-	            $res["name"] = $name;
-	            $res["status"] = $status;
+				$res["name"] = $name;
+				$res["status"] = $status;
 				$res["price"] = $price;
 				$res["info"] = $info;
+				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+				$res["changed_at"] = $timestamp_object->getTimestamp();
+				$result[]=$res;
+			}
+			$stmt->close();
+			return $result;
+		} else {
+			return NULL;
+		}
+	}
 
-	            $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
-				$res["changed_at"] = $timestamp_object->getTimestamp();	
-	            
-            $stmt->close();
-            return $res;
-        } else {
-            return NULL;
-        }
-    }
-	
+	public function getAllProducts(){
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p");
+		if ($stmt->execute()){
+			$stmt->store_result();
+			if($stmt->num_rows==0) return NULL;
+			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at);
+			$result=array();
+			while($stmt->fetch()){
+				$res=array();
+				$res["id"] = $id;
+				$res["contractorid"] = $contractorid;
+				$res["name"] = $name;
+				$res["status"] = $status;
+				$res["price"] = $price;
+				$res["info"] = $info;
+				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+				$res["changed_at"] = $timestamp_object->getTimestamp();
+				$result[]=$res;
+			}
+			$stmt->close();
+			return $result;
+		} else {
+			return NULL;
+		}
+	}
+
 //-------------------------Delta-----------------------------------------
 		
     public function getProductsDelta($timestamp) {
