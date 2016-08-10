@@ -62,7 +62,7 @@ foreach($groups as $group){
 			<td>'.$group["id"].'</td>
 			<td>'.$group["name"].'</td>                
 			<td><a href="contractor_details?id='.$group["id"].'">details</a></td>
-			<td><a href="contractor_products?id='.$group["id"].'">products</a></td>
+			<td><a href="contractor_products.php?id='.$group["id"].'">products</a></td>
 		</tr>';
 		
 	//}		

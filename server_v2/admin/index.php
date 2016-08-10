@@ -33,9 +33,13 @@ include 'auth.php';
 
 <h2>Главная страница</h2>
 
-<br><a href="http://igorserver.ru/v2/admin/contractors.php">Поставщики</a>
+<!--br><a href="http://igorserver.ru/v2/admin/contractors.php">Поставщики</a>
 <br><a href="http://igorserver.ru/v2/admin/customers.php">Заказчики</a>
-<br><a href="http://igorserver.ru/v2/admin/customers.php">Groups</a>
+<br><a href="http://igorserver.ru/v2/admin/customers.php">Groups</a-->
+
+<br><a href="http://localhost/fabricant/server_v2/admin/contractors.php">Поставщики</a>
+<br><a href="http://localhost/fabricant/server_v2/admin/customers.php">Заказчики</a>
+<br><a href="http://localhost/fabricant/server_v2/admin/customers.php">Groups</a>
 
 </body>
 </html>
