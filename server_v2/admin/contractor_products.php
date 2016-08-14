@@ -10,7 +10,9 @@
 	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
 	<!-- Optional theme -->
 	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
-	<!-- Latest compiled and minified JavaScript -->
+	<!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <!-- Latest compiled and minified JavaScript -->
 	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
 	<!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
 	<!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
@@ -18,16 +20,80 @@
 		<script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
 		<script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
 	<![endif]-->
-    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <!-- JSON-Editor plugins -->
     <script src="../libs/json-editor/jsoneditor.js"></script>
-</head>  
+    
+    <script>
+	function getProductJSON(id) {
+		var info = null;
+		var xmlhttp = new XMLHttpRequest();
+			xmlhttp.onreadystatechange = function() {
+				if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+					$.each(xmlhttp.responseText, function(index, value) {
+						if (index == "info")
+							info = value;
+					});
+				}
+			}
+			xmlhttp.open("GET", "getProducts.php?id="+id, true);
+			xmlhttp.send();
+		return info;
+	}
+	
+	function getProducts(id) {
+		$.ajax( {
+        	url: "getProducts.php",
+			data: {id: id},
+			cache: false,
+			dataType: 'json',
+            success: function(jsondata) {
+				showProductsTable(jsondata);
+            }
+        });
+	}
+	
+	function showProductsTable(jsondata) {
+		var l = jsondata.length;
+		$('#cp tbody:first').empty();
+		var tbody = document.getElementById('cp').getElementsByTagName('tbody')[0];
+		
+		for (var i = 0; i < l; i++) {
+			var nrow = tbody.insertRow(-1);
+			nrow.insertCell(-1).innerHTML = i + 1;
+			$.each(jsondata[i], function(index, value) {
+				/*if (index == "info") {
+					$.each(JSON.parse(value), function(i, val) {
+						if (i == "summary")
+							nrow.insertCell(-1).innerHTML = val;
+					});
+				}*/
+				nrow.insertCell(-1).innerHTML = value;
+			});
+		}
+	}
+	
+	function getProductsXML(index) {
+		if (index.length == 0) {
+			document.getElementById("txtHint").innerHTML = "";
+			return;
+		} else {
+			var xmlhttp = new XMLHttpRequest();
+			xmlhttp.onreadystatechange = function() {
+				if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+					document.getElementById("txtHint").innerHTML = xmlhttp.responseText;
+				}
+			}
+			xmlhttp.open("GET", "getProducts.php?id="+index, true);
+			xmlhttp.send();
+		}
+	}
+	</script>
+</head>
 <body>
 <?php
 require_once dirname(__FILE__).'/../include/DbHandlerFabricant.php';
 session_start();
 include 'auth.php';
-
 if (!isset($_GET['id'])){
 	header("Location: http://".$_SERVER['HTTP_HOST']."/fabricant/server_v2/admin/contractors.php"); //"/v2/admin/contractors.php");
 	exit;
@@ -38,86 +104,46 @@ if($contractorProducts==NULL) {
 	header("Location: http://".$_SERVER['HTTP_HOST']."/fabricant/server_v2/admin/contractors.php"); //"/v2/admin/contractors.php");
 	exit;
 }
-
-//print_r($contractorProducts);
 ?>
+<div class="page-header">
+	<h1>Продукты</h1>
+</div>
+<p>Contractor products</p>
+<div class="row">
 <div class="container">
-	<h2>Products</h2>
-    <p>Contractor products</p>
-    <table class="table">
+	<table id="cp" class="table">
 	<thead>
 		<tr>
 			<th>#</th>
-			<th>contractorid</th>
+			<th>id</th>
 			<th>name</th>
-			<th>status</th>
+			<!--th>status</th-->
 			<th>price</th>
-            <!--th>info</th-->
+            <th>info</th>
             <th>changed at</th>
 		</tr>
 	</thead>
 	<tbody>
-	<?php
-	$infos=array();
-	foreach($contractorProducts as $product) {
-		echo '<tr>
-			<td>'.$id=$product["id"].
-			'</td><td>'.$contractorid=$product["contractorid"].
-			'</td><td>'.$name=$product["name"].
-			'</td><td>'.$status=$product["status"].
-			'</td><td>'.$price=$product["price"].
-			//'</td><td>'.$info=$product["info"].
-			'</td><td>'.$changed_at=$product["changed_at"].
-			'</td><tr>';
-			$infos[]=$product["info"];
-	}
-	$test=array('a'=>1);
-	echo '<script> var infos='.json_encode($test).'</script>';
-	?>
 	</tbody>
 	</table>
-    <div id="testdiv" class="row" style="background:#EBEBEB">
-    	
+    <div id="editor_holder">
     </div>
 </div>
+</div>
 <script>
+$(document).ready(function(e) {
+	var starting_value = getProductJSON('<?php echo $_GET["id"]; ?>');
+	alert(starting_value);
 	// Initialize the editor with a JSON schema
-      /*var editor = new JSONEditor(document.getElementById('editor_holder'),{
-        schema: {
-          type: "object",
-          title: "Car",
-          properties: {
-            make: {
-              type: "string",
-              enum: [
-                "Toyota",
-                "BMW",
-                "Honda",
-                "Ford",
-                "Chevy",
-                "VW"
-              ]
-            },
-            model: {
-              type: "string"
-            },
-            year: {
-              type: "integer",
-              enum: [
-                1995,1996,1997,1998,1999,
-                2000,2001,2002,2003,2004,
-                2005,2006,2007,2008,2009,
-                2010,2011,2012,2013,2014
-              ],
-              default: 2008
-            }
-          }
-        }
-      });*/
-	  $("#testdiv").append("asasdasdasddasssssssssssssssssssssas");
-	  infos=JSON.parse(infos);
-	  alert("mthfk");
-	  
+	/*var editor = new JSONEditor(document.getElementById('editor_holder'), {
+		theme: 'bootstrap3',
+		iconlib: "bootstrap3",
+		startval: starting_value
+	});*/
+});
 </script>
+<script>
+
+    </script>
 </body>
 </html>

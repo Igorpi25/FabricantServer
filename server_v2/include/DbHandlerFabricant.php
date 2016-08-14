@@ -107,9 +107,9 @@ class DbHandlerFabricant extends DbHandler{
 			while($stmt->fetch()){
 				$res=array();
 				$res["id"] = $id;
-				$res["contractorid"] = $contractorid;
+				//$res["contractorid"] = $contractorid;
 				$res["name"] = $name;
-				$res["status"] = $status;
+				//$res["status"] = $status;
 				$res["price"] = $price;
 				$res["info"] = $info;
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
