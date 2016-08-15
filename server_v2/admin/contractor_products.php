@@ -56,7 +56,6 @@
 		var l = jsondata.length;
 		$('#cp tbody:first').empty();
 		var tbody = document.getElementById('cp').getElementsByTagName('tbody')[0];
-		
 		for (var i = 0; i < l; i++) {
 			var nrow = tbody.insertRow(-1);
 			nrow.insertCell(-1).innerHTML = i + 1;
@@ -132,18 +131,146 @@ if($contractorProducts==NULL) {
 </div>
 <script>
 $(document).ready(function(e) {
-	var starting_value = getProductJSON('<?php echo $_GET["id"]; ?>');
-	alert(starting_value);
+	getProducts('<?php echo $_GET["id"]; ?>');
+	var stringjson = '{"name":{"text":"БАТОН 8 ЗЛАКОВ"},"name_full":{"text":"БАТОН 8 ЗЛАКОВ"},"price":51,"summary":{"text":"Размер - 28х10х7 см. Хлеб 8 злаков – это хлебобулочное изделие, которое выпекается из мучной композиции, которая в своем составе содержит 8 злаков, это: мука пшеничная, пшеничные хлопья, соевые хлопья, семена подсолнечника, пшеничная сухая клейковина, семена льна, хлопья ржаные, кукуруза экструдированная. Состав данного хлеба включает такой состав зерновых злаков, что данное хлебобулочное изделие приносит организму неоценимую пользу, ведь злаковые культуры имеют богатый витаминно-минеральный комплекс. Витамины группы В, Е, А, РР и природные соединения: холин, молибден, железо, йод, фосфор; калий, кальций, натрий, делают хлеб источником полезных и необходимых компонентов. Полезные свойства: Зерновой хлеб 8 злаков лучше других сортов хлеба насыщает организм витаминами группы В и микроэлементами. Сбалансированный состав данного хлеба помогает человеческому организму усваивать полезные витаминные соединения. Постоянное употребление хлеба 8 злаков положительно воздействует на работу желудочно-кишечного тракта. Природная клетчатка, содержащаяся в рассматриваемом хлебе, делает его необычайно полезным и особенным. Хлеб 8 злаков – полезный продукт питания в рационе человека любого возраста."},"icon":{"image_url":"http://igorserver.ru/v2/images/products/41_21_icon.jpg"},"details":[{"slides":[{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154401.jpg"},"title":{"text":"Фото 1"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154802.jpg"},"title":{"text":"Фото 2"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154903.jpg"},"title":{"text":"Фото 3"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155304.jpg"},"title":{"text":"Фото 4"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155405.jpg"},"title":{"text":"Фото 5"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155706.jpg"},"title":{"text":"Фото 6"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_156208.jpg"},"title":{"text":"Фото 7"}}],"type":2},{"title":{"text":"Характеристики"},"photo":{"visible":false},"value":{"text":"СоставВода (фильтрованная), дрожжи, соль, мука (высший сорт), смесь 8 злаков.Пищевая ценность в 100 гБелки – 13,7 г, Жиры – 5,2 г, углеводы – 43 гЭнергетическая ценность в 100 г269 ккалРазмер28х10х7 смВес400 г"},"type":1},{"title":{"text":"Описание"},"photo":{"visible":false},"value":{"text":"Хлеб 8 злаков – это хлебобулочное изделие, которое выпекается из мучной композиции, которая в своем составе содержит 8 злаков, это: мука пшеничная, пшеничные хлопья, соевые хлопья, семена подсолнечника, пшеничная сухая клейковина, семена льна, хлопья ржаные, кукуруза экструдированная. Состав данного хлеба включает такой состав зерновых злаков, что данное хлебобулочное изделие приносит организму неоценимую пользу, ведь злаковые культуры имеют богатый витаминно-минеральный комплекс. Витамины группы В, Е, А, РР и природные соединения: холин, молибден, железо, йод, фосфор; калий, кальций, натрий, делают хлеб источником полезных и необходимых компонентов. Полезные свойства: Зерновой хлеб 8 злаков лучше других сортов хлеба насыщает организм витаминами группы В и микроэлементами. Сбалансированный состав данного хлеба помогает человеческому организму усваивать полезные витаминные соединения. Постоянное употребление хлеба 8 злаков положительно воздействует на работу желудочно-кишечного тракта. Природная клетчатка, содержащаяся в рассматриваемом хлебе, делает его необычайно полезным и особенным. Хлеб 8 злаков – полезный продукт питания в рационе человека любого возраста."},"type":1}]}';
+	var schemajson = $.parseJSON(stringjson);
+	console.log(schemajson['name']['text']);
 	// Initialize the editor with a JSON schema
-	/*var editor = new JSONEditor(document.getElementById('editor_holder'), {
+	var editor = new JSONEditor(document.getElementById('editor_holder'), {
 		theme: 'bootstrap3',
 		iconlib: "bootstrap3",
-		startval: starting_value
-	});*/
+		//startval: starting_value
+		schema: {
+			"type": "object",
+			"title": "Product",
+			//format: "grid", "tabs", "normal", "table"
+			"format": "normal",
+			"properties": {
+				"name": {
+					"type": "object",
+					"description": "Product name",
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
+					"properties": {
+						"text": {
+							"type": "string"
+						}
+					}
+				},
+				"name_full": {
+					"type": "object",
+					"description": "Product full name",
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
+					"properties": {
+						"text": {
+							"type": "string"
+						}
+					}
+				},
+				"price": {
+					"type": "number",
+					"description": "Product price",
+				},
+				"summary": {
+					"type": "object",
+					"description": "Product summary information",
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
+					"properties": {
+						"text": {
+							"type": "string"
+						}
+					}
+				},
+				"icon": {
+					"type": "object",
+					"description": "Product icon object",
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
+					"properties": {
+						"image_url": {
+							"type": "string"
+						}
+					}
+				},
+				"details": {
+					"type": "array",
+					"title": "Details",
+					"description": "Slides element and other information",
+					"items": {
+						/*"type": "object",
+						"properties": {
+							"type": {
+								"type": "integer",
+								"enum": [
+									1,
+									2
+								],
+								"default": 1
+							}
+						}*/
+						"title": "Select",
+						"oneOf": [
+							{
+								"$ref": "#/definitions/slider",
+								"title": "Slides"
+							},
+							{
+								"$ref": "#/definitions/info",
+								"title": "Info"
+							}
+						]
+					}
+				}
+			},
+			"definitions": {
+				"slider": {
+					"type": "object",
+					"title": "Slides or info",
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
+					"properties": {
+						"image_url": {
+							"type": "string"
+						}
+					}
+				},
+				"info": {
+					"type": "object",
+					"title": "Info",
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
+					"properties": {
+						"info": {
+							"type": "string"
+						}
+					}
+				}
+			},
+			"keep_oneof_values": false,
+			"required_by_default": true
+		}
+	});
 });
 </script>
-<script>
-
-    </script>
 </body>
 </html>

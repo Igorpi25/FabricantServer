@@ -80,9 +80,9 @@ class DbHandlerFabricant extends DbHandler{
             
 	            $res= array();
 	            $res["id"] = $id;
-				$res["contractorid"] = $contractorid;
+				//$res["contractorid"] = $contractorid;
 	            $res["name"] = $name;
-	            $res["status"] = $status;
+	            //$res["status"] = $status;
 				$res["price"] = $price;
 				$res["info"] = $info;
 
@@ -97,7 +97,7 @@ class DbHandlerFabricant extends DbHandler{
     }
 	
 	public function getProductsOfContractor($contractorid){
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.contractorid=? AND p.status=1");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.contractorid=? AND p.status=2");
 		$stmt->bind_param("i", $contractorid);
 		if ($stmt->execute()){
 			$stmt->store_result();
