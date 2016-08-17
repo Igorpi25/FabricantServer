@@ -132,74 +132,9 @@ if($contractorProducts==NULL) {
 <script>
 $(document).ready(function(e) {
 	getProducts('<?php echo $_GET["id"]; ?>');
-	var stringjson = '[{"name":{"text":"БАТОН 8 ЗЛАКОВ"},"name_full":{"text":"БАТОН 8 ЗЛАКОВ"},"price":51,"summary":{"text":"Размер - 28х10х7 см. Хлеб 8 злаков – это хлебобулочное изделие, которое выпекается из мучной композиции, которая в своем составе содержит 8 злаков, это: мука пшеничная, пшеничные хлопья, соевые хлопья, семена подсолнечника, пшеничная сухая клейковина, семена льна, хлопья ржаные, кукуруза экструдированная. Состав данного хлеба включает такой состав зерновых злаков, что данное хлебобулочное изделие приносит организму неоценимую пользу, ведь злаковые культуры имеют богатый витаминно-минеральный комплекс. Витамины группы В, Е, А, РР и природные соединения: холин, молибден, железо, йод, фосфор; калий, кальций, натрий, делают хлеб источником полезных и необходимых компонентов. Полезные свойства: Зерновой хлеб 8 злаков лучше других сортов хлеба насыщает организм витаминами группы В и микроэлементами. Сбалансированный состав данного хлеба помогает человеческому организму усваивать полезные витаминные соединения. Постоянное употребление хлеба 8 злаков положительно воздействует на работу желудочно-кишечного тракта. Природная клетчатка, содержащаяся в рассматриваемом хлебе, делает его необычайно полезным и особенным. Хлеб 8 злаков – полезный продукт питания в рационе человека любого возраста."},"icon":{"image_url":"http://igorserver.ru/v2/images/products/41_21_icon.jpg"},"details":[{"type":2,"slides":[{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154401.jpg"},"title":{"text":"Фото 1"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154802.jpg"},"title":{"text":"Фото 2"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154903.jpg"},"title":{"text":"Фото 3"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155304.jpg"},"title":{"text":"Фото 4"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155405.jpg"},"title":{"text":"Фото 5"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155706.jpg"},"title":{"text":"Фото 6"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_156208.jpg"},"title":{"text":"Фото 7"}}]},{"type":1,"title":{"text":"Характеристики"},"photo":{"visible":false},"value":{"text":"СоставВода (фильтрованная), дрожжи, соль, мука (высший сорт), смесь 8 злаков.Пищевая ценность в 100 гБелки – 13,7 г, Жиры – 5,2 г, углеводы – 43 гЭнергетическая ценность в 100 г269 ккалРазмер28х10х7 смВес400 г"}},{"type":1,"title":{"text":"Описание"},"photo":{"visible":false},"value":{"text":"Хлеб 8 злаков – это хлебобулочное изделие, которое выпекается из мучной композиции, которая в своем составе содержит 8 злаков, это: мука пшеничная, пшеничные хлопья, соевые хлопья, семена подсолнечника, пшеничная сухая клейковина, семена льна, хлопья ржаные, кукуруза экструдированная. Состав данного хлеба включает такой состав зерновых злаков, что данное хлебобулочное изделие приносит организму неоценимую пользу, ведь злаковые культуры имеют богатый витаминно-минеральный комплекс. Витамины группы В, Е, А, РР и природные соединения: холин, молибден, железо, йод, фосфор; калий, кальций, натрий, делают хлеб источником полезных и необходимых компонентов. Полезные свойства: Зерновой хлеб 8 злаков лучше других сортов хлеба насыщает организм витаминами группы В и микроэлементами. Сбалансированный состав данного хлеба помогает человеческому организму усваивать полезные витаминные соединения. Постоянное употребление хлеба 8 злаков положительно воздействует на работу желудочно-кишечного тракта. Природная клетчатка, содержащаяся в рассматриваемом хлебе, делает его необычайно полезным и особенным. Хлеб 8 злаков – полезный продукт питания в рационе человека любого возраста."}}]}]';
+	var stringjson = '{"name":{"text":"БАТОН 8 ЗЛАКОВ"},"name_full":{"text":"БАТОН 8 ЗЛАКОВ"},"price":51,"summary":{"text":"Размер - 28х10х7 см. Хлеб 8 злаков – это хлебобулочное изделие, которое выпекается из мучной композиции, которая в своем составе содержит 8 злаков, это: мука пшеничная, пшеничные хлопья, соевые хлопья, семена подсолнечника, пшеничная сухая клейковина, семена льна, хлопья ржаные, кукуруза экструдированная. Состав данного хлеба включает такой состав зерновых злаков, что данное хлебобулочное изделие приносит организму неоценимую пользу, ведь злаковые культуры имеют богатый витаминно-минеральный комплекс. Витамины группы В, Е, А, РР и природные соединения: холин, молибден, железо, йод, фосфор; калий, кальций, натрий, делают хлеб источником полезных и необходимых компонентов. Полезные свойства: Зерновой хлеб 8 злаков лучше других сортов хлеба насыщает организм витаминами группы В и микроэлементами. Сбалансированный состав данного хлеба помогает человеческому организму усваивать полезные витаминные соединения. Постоянное употребление хлеба 8 злаков положительно воздействует на работу желудочно-кишечного тракта. Природная клетчатка, содержащаяся в рассматриваемом хлебе, делает его необычайно полезным и особенным. Хлеб 8 злаков – полезный продукт питания в рационе человека любого возраста."},"icon":{"image_url":"http://igorserver.ru/v2/images/products/41_21_icon.jpg"},"details":[{"type":2,"slides":[{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154401.jpg"},"title":{"text":"Фото 1"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154802.jpg"},"title":{"text":"Фото 2"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154903.jpg"},"title":{"text":"Фото 3"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155304.jpg"},"title":{"text":"Фото 4"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155405.jpg"},"title":{"text":"Фото 5"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155706.jpg"},"title":{"text":"Фото 6"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_156208.jpg"},"title":{"text":"Фото 7"}}]},{"type":1,"title":{"text":"Характеристики"},"photo":{"visible":false},"value":{"text":"СоставВода (фильтрованная), дрожжи, соль, мука (высший сорт), смесь 8 злаков.Пищевая ценность в 100 гБелки – 13,7 г, Жиры – 5,2 г, углеводы – 43 гЭнергетическая ценность в 100 г269 ккалРазмер28х10х7 смВес400 г"}},{"type":1,"title":{"text":"Описание"},"photo":{"visible":false},"value":{"text":"Хлеб 8 злаков – это хлебобулочное изделие, которое выпекается из мучной композиции, которая в своем составе содержит 8 злаков, это: мука пшеничная, пшеничные хлопья, соевые хлопья, семена подсолнечника, пшеничная сухая клейковина, семена льна, хлопья ржаные, кукуруза экструдированная. Состав данного хлеба включает такой состав зерновых злаков, что данное хлебобулочное изделие приносит организму неоценимую пользу, ведь злаковые культуры имеют богатый витаминно-минеральный комплекс. Витамины группы В, Е, А, РР и природные соединения: холин, молибден, железо, йод, фосфор; калий, кальций, натрий, делают хлеб источником полезных и необходимых компонентов. Полезные свойства: Зерновой хлеб 8 злаков лучше других сортов хлеба насыщает организм витаминами группы В и микроэлементами. Сбалансированный состав данного хлеба помогает человеческому организму усваивать полезные витаминные соединения. Постоянное употребление хлеба 8 злаков положительно воздействует на работу желудочно-кишечного тракта. Природная клетчатка, содержащаяся в рассматриваемом хлебе, делает его необычайно полезным и особенным. Хлеб 8 злаков – полезный продукт питания в рационе человека любого возраста."}}]}';
 	
-	var start_value = [
-		{
-		  name: {
-		    "text": "Батон"
-		  },
-		  name_full: {
-		    "text": "Батон"
-		  },
-		  price: 100,
-		  summary: {
-		    "text": "фыв фывфы вф ыв фы вф ыв фы"
-		  },
-		  icon: {
-		    "image_url": "Http://asdas dsas das"
-		  },
-		  details: [
-		    {
-		      results: {
-		        type: 2,
-		        slides: [
-		          {
-		            photo: {
-		              image_url: "imageurl"
-		            },
-		            title: {
-		              text: "titel title"
-		            }
-		          },
-		          {
-		            photo: {
-		              image_url: "imageurl_2"
-		            },
-		            title: {
-		              text: "tite 2l title 2"
-		            }
-		          },
-		          {
-		            photo: {
-		              image_url: "imageurl_2"
-		            },
-		            title: {
-		              text: "tite 3l title 3"
-		            }
-		          }
-		        ]
-		      }
-		    },
-		    {
-		      results: {
-		        type: 1,
-		        title: {
-		          text: "Характеристики"
-		        },
-		        photo: {
-		          visible: false
-		        },
-		        value: {
-		          text: "СоставВода (фильтрованная)"
-		        }
-		      }
-		    }
-		  ]
-		}
-	];
-	
-	var schemajson = $.parseJSON(stringjson);
+	var schemajson = JSON.parse(stringjson);
 	
 	//console.log(schemajson['name']['text']);
 	// Initialize the editor with a JSON schema
@@ -211,7 +146,10 @@ $(document).ready(function(e) {
 			"type": "object",
 			"title": "Product",
 			//format: "grid", "tabs", "normal", "table"
-			"format": "normal",
+			"format": "frid",
+			"options": {
+				"layout": "grid"
+			},
 			"properties": {
 				"name": {
 					"type": "object",
@@ -219,13 +157,17 @@ $(document).ready(function(e) {
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
-						"disable_properties": true
+						"disable_properties": true,
+						"grid_columns": 4
 					},
 					"properties": {
 						"text": {
-							"type": "string"
+							"type": "string",
+							"format": "text",
+							"minLength": 2
 						}
-					}
+					},
+					"propertyOrder": 1
 				},
 				"name_full": {
 					"type": "object",
@@ -233,16 +175,26 @@ $(document).ready(function(e) {
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
-						"disable_properties": true
+						"disable_properties": true,
+						"grid_columns": 8
 					},
 					"properties": {
 						"text": {
-							"type": "string"
+							"type": "string",
+							"format": "textarea",
+							"minLength": 2
 						}
-					}
+					},
+					"propertyOrder": 2
 				},
 				"price": {
-					"type": "number"
+					"type": "number",
+					"options": {
+						"grid_columns": 2
+					},
+					"minimum": 0,
+					"maximum": 99999,
+					"propertyOrder": 5
 				},
 				"summary": {
 					"type": "object",
@@ -250,111 +202,158 @@ $(document).ready(function(e) {
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
-						"disable_properties": true
+						"disable_properties": true,
+						"grid_columns": 12
 					},
 					"properties": {
 						"text": {
-							"type": "string"
+							"type": "string",
+							"format": "textarea"
 						}
-					}
+					},
+					"propertyOrder": 3
 				},
 				"icon": {
 					"type": "object",
-					"description": "Product icon object",
+					"description": "Product icon image url",
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
-						"disable_properties": true
+						"disable_properties": true,
+						"grid_columns": 12
 					},
 					"properties": {
 						"image_url": {
-							"type": "string"
+							"type": "string",
+							"format": "url"
 						}
-					}
+					},
+					"propertyOrder": 4
 				},
 				"details": {
 					"type": "array",
 					"title": "Details",
+					"options": {
+						"grid_columns": 10
+					},
 					"format": "tabs",
 					"items": {
 						"type": "object",
-						"required": ["results"],
-						"properties": {
-							"results": {
-								"type": "object",
-								"oneOf": [
-									{
-										//"$ref": "#/definations/slider"
-										"properties": {
-											"type": {
-												"type": "integer"
+						"options": {
+							"disable_collapse": true,
+							"disable_edit_json": true,
+							"disable_properties": true
+						},
+						"oneOf": [
+							{
+								"title": "Slider",
+								"properties": {
+									"type": {
+										"type": "integer",
+										"minimum": 0
+									},
+									"slides": {
+										"type": "array",
+										"title": "Slides",
+										"format": "tabs",
+										"items": {
+											"type": "object",
+											"options": {
+												"disable_collapse": true,
+												"disable_edit_json": true,
+												"disable_properties": true
 											},
-											"slides": {
-												"type": "array",
-												"title": "Slides",
-												"items": {
+											"properties": {
+												"photo": {
 													"type": "object",
+													"options": {
+														"disable_collapse": true,
+														"disable_edit_json": true,
+														"disable_properties": true
+													},
 													"properties": {
-														"photo": {
-															"type": "object",
-															"properties": {
-																"image_url": {
-																	"type": "string"
-																}
-															}
-														},
-														"title": {
-															"type": "object",
-															"properties": {
-																"text": {
-																	"type": "string"
-																}
-															}
+														"image_url": {
+															"type": "string",
+															"format": "url"
+														}
+													}
+												},
+												"title": {
+													"type": "object",
+													"options": {
+														"disable_collapse": true,
+														"disable_edit_json": true,
+														"disable_properties": true
+													},
+													"properties": {
+														"text": {
+															"type": "string",
+															"format": "text",
+															"minLength": 1
 														}
 													}
 												}
 											}
-										},
-										"required": ["type", "slides"],
-										"additionalProperties": false
-									},
-									{
-										//"$ref": "#/definations/info"
-										"properties": {
-											"type": {
-												"type": "integer"
-											},
-											"title": {
-												"type": "object",
-												"properties": {
-													"text": {
-														"type": "string"
-													}
-												}
-											},
-											"photo": {
-												"type": "object",
-												"properties": {
-													"visible": {
-														"type": "boolean"
-													}
-												}
-											},
-											"value": {
-												"type": "object",
-												"properties": {
-													"text": {
-														"type": "string"
-													}
-												}
-											}
-										},
-										"required": ["type", "title", "photo", "value"],
-										"additionalProperties": false
+										}
 									}
-								]
+								},
+								"required": ["type", "slides"],
+								"additionalProperties": false
+							},
+							{
+								"title": "Info",
+								"properties": {
+									"type": {
+										"type": "integer",
+										"minimum": 0
+									},
+									"title": {
+										"type": "object",
+										"options": {
+											"disable_collapse": true,
+											"disable_edit_json": true,
+											"disable_properties": true
+										},
+										"properties": {
+											"text": {
+												"type": "string",
+												"format": "textarea"
+											}
+										}
+									},
+									"photo": {
+										"type": "object",
+										"options": {
+											"disable_collapse": true,
+											"disable_edit_json": true,
+											"disable_properties": true
+										},
+										"properties": {
+											"visible": {
+												"type": "boolean",
+												"default": false
+											}
+										}
+									},
+									"value": {
+										"type": "object",
+										"options": {
+											"disable_collapse": true,
+											"disable_edit_json": true,
+											"disable_properties": true
+										},
+										"properties": {
+											"text": {
+												"type": "string",
+												"format": "textarea"
+											}
+										}
+									}
+								},
+								"required": ["type", "title", "photo", "value"],
+								"additionalProperties": false
 							}
-						}
+						]
 					}
 				}
 			},
@@ -430,6 +429,8 @@ $(document).ready(function(e) {
 		}
 		//,startval: start_value
 	});
+	
+	//editor.setValue(schemajson);
 });
 </script>
 </body>
