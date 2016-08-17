@@ -141,19 +141,17 @@ $(document).ready(function(e) {
 	var editor = new JSONEditor(document.getElementById('editor_holder'), {
 		theme: 'bootstrap3',
 		iconlib: "bootstrap3",
-		//startval: starting_value
 		schema: {
 			"type": "object",
 			"title": "Product",
-			//format: "grid", "tabs", "normal", "table"
-			"format": "frid",
+			"format": "grid",
 			"options": {
 				"layout": "grid"
 			},
 			"properties": {
 				"name": {
 					"type": "object",
-					"description": "Product name",
+					"title": "Product name",
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
@@ -163,15 +161,21 @@ $(document).ready(function(e) {
 					"properties": {
 						"text": {
 							"type": "string",
+							//"id": "name_text",
+							"title": "Enter the name of product",
 							"format": "text",
-							"minLength": 2
+							"minLength": 2,
+							"maxLength": 255
 						}
 					},
 					"propertyOrder": 1
 				},
 				"name_full": {
 					"type": "object",
-					"description": "Product full name",
+					"title": "Product full name",
+					/*"watch": {
+						"wname": "name_text"
+					},*/
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
@@ -181,15 +185,22 @@ $(document).ready(function(e) {
 					"properties": {
 						"text": {
 							"type": "string",
+							"title": "Enter the full name of product",
 							"format": "textarea",
-							"minLength": 2
+							"options": {
+								"expand_height": true
+							},
+							"minLength": 2,
+							"maxLength": 255
 						}
 					},
 					"propertyOrder": 2
 				},
 				"price": {
 					"type": "number",
+					"title": "Product price",
 					"options": {
+						"input_width": "90%",
 						"grid_columns": 2
 					},
 					"minimum": 0,
@@ -198,37 +209,43 @@ $(document).ready(function(e) {
 				},
 				"summary": {
 					"type": "object",
-					"description": "Product summary information",
+					"title": "Product summary information",
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
 						"disable_properties": true,
-						"grid_columns": 12
+						"grid_columns": 8
 					},
 					"properties": {
 						"text": {
 							"type": "string",
-							"format": "textarea"
+							"title": "Enter summary information of product",
+							"format": "textarea",
+							"options": {
+								"expand_height": true
+							},
+							"minLength": 2
 						}
 					},
-					"propertyOrder": 3
+					"propertyOrder": 4
 				},
 				"icon": {
 					"type": "object",
-					"description": "Product icon image url",
+					"title": "Product icon image url",
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
 						"disable_properties": true,
-						"grid_columns": 12
+						"grid_columns": 4
 					},
 					"properties": {
 						"image_url": {
 							"type": "string",
+							"title": "Enter icon image url of product",
 							"format": "url"
 						}
 					},
-					"propertyOrder": 4
+					"propertyOrder": 3
 				},
 				"details": {
 					"type": "array",
@@ -236,9 +253,11 @@ $(document).ready(function(e) {
 					"options": {
 						"grid_columns": 10
 					},
+					"propertyOrder": 6,
 					"format": "tabs",
 					"items": {
 						"type": "object",
+						"title": "Detail",
 						"options": {
 							"disable_collapse": true,
 							"disable_edit_json": true,
@@ -250,14 +269,20 @@ $(document).ready(function(e) {
 								"properties": {
 									"type": {
 										"type": "integer",
-										"minimum": 0
+										"enum": [2],
+										"options": {
+											"hidden": true
+										}
 									},
 									"slides": {
 										"type": "array",
 										"title": "Slides",
 										"format": "tabs",
+										"uniqueItems": true,
+										"minItems": 1,
 										"items": {
 											"type": "object",
+											"title": "Slide",
 											"options": {
 												"disable_collapse": true,
 												"disable_edit_json": true,
@@ -266,6 +291,7 @@ $(document).ready(function(e) {
 											"properties": {
 												"photo": {
 													"type": "object",
+													"title": "Product photo url",
 													"options": {
 														"disable_collapse": true,
 														"disable_edit_json": true,
@@ -274,12 +300,14 @@ $(document).ready(function(e) {
 													"properties": {
 														"image_url": {
 															"type": "string",
+															"title": "Enter product photo url",
 															"format": "url"
 														}
 													}
 												},
 												"title": {
 													"type": "object",
+													"title": "Product photo description",
 													"options": {
 														"disable_collapse": true,
 														"disable_edit_json": true,
@@ -288,8 +316,8 @@ $(document).ready(function(e) {
 													"properties": {
 														"text": {
 															"type": "string",
-															"format": "text",
-															"minLength": 1
+															"title": "Enter description of product photo",
+															"format": "textarea"
 														}
 													}
 												}
@@ -305,10 +333,14 @@ $(document).ready(function(e) {
 								"properties": {
 									"type": {
 										"type": "integer",
-										"minimum": 0
+										"enum": [1],
+										"options": {
+											"hidden": true
+										}
 									},
 									"title": {
 										"type": "object",
+										"title": "Information title",
 										"options": {
 											"disable_collapse": true,
 											"disable_edit_json": true,
@@ -317,12 +349,16 @@ $(document).ready(function(e) {
 										"properties": {
 											"text": {
 												"type": "string",
-												"format": "textarea"
+												"title": "Enter information title",
+												"format": "text",
+												"minLength": 1
 											}
 										}
 									},
 									"photo": {
 										"type": "object",
+										"title": "Information photo",
+										"description": "Default selected false, not yet realized",
 										"options": {
 											"disable_collapse": true,
 											"disable_edit_json": true,
@@ -331,12 +367,14 @@ $(document).ready(function(e) {
 										"properties": {
 											"visible": {
 												"type": "boolean",
+												"format": "checkbox",
 												"default": false
 											}
 										}
 									},
 									"value": {
 										"type": "object",
+										"title": "Information text",
 										"options": {
 											"disable_collapse": true,
 											"disable_edit_json": true,
@@ -345,6 +383,7 @@ $(document).ready(function(e) {
 										"properties": {
 											"text": {
 												"type": "string",
+												"title": "Enter information text",
 												"format": "textarea"
 											}
 										}
@@ -355,75 +394,6 @@ $(document).ready(function(e) {
 							}
 						]
 					}
-				}
-			},
-			"definations": {
-				"slider": {
-					"properties": {
-						"type": {
-							"type": "integer"
-						},
-						"slides": {
-							"type": "array",
-							"title": "Slides",
-							"items": {
-								"type": "object",
-								"properties": {
-									"photo": {
-										"type": "object",
-										"properties": {
-											"image_url": {
-												"type": "string"
-											}
-										}
-									},
-									"title": {
-										"type": "object",
-										"properties": {
-											"text": {
-												"type": "string"
-											}
-										}
-									}
-								}
-							}
-						}
-					},
-					"required": ["type", "slides"],
-					"additionalProperties": false
-				},
-				"info": {
-					"properties": {
-						"type": {
-							"type": "integer"
-						},
-						"title": {
-							"type": "object",
-							"properties": {
-								"text": {
-									"type": "string"
-								}
-							}
-						},
-						"photo": {
-							"type": "object",
-							"properties": {
-								"visible": {
-									"type": "boolean"
-								}
-							}
-						},
-						"value": {
-							"type": "object",
-							"properties": {
-								"text": {
-									"type": "string"
-								}
-							}
-						}
-					},
-					"required": ["type", "title", "photo", "value"],
-					"additionalProperties": false
 				}
 			}
 		}
