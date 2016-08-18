@@ -152,6 +152,7 @@ $(document).ready(function(e) {
 				"name": {
 					"type": "object",
 					"title": "Product name",
+					//"id": "name_obj",
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
@@ -161,7 +162,6 @@ $(document).ready(function(e) {
 					"properties": {
 						"text": {
 							"type": "string",
-							//"id": "name_text",
 							"title": "Enter the name of product",
 							"format": "text",
 							"minLength": 2,
@@ -186,12 +186,16 @@ $(document).ready(function(e) {
 						"text": {
 							"type": "string",
 							"title": "Enter the full name of product",
+							"template": "{{wname}}",
+							"watch": {
+								"wname": "root.name.text"
+							},
 							"format": "textarea",
 							"options": {
 								"expand_height": true
-							},
-							"minLength": 2,
-							"maxLength": 255
+							}//,
+							/*"minLength": 2,
+							"maxLength": 255*/
 						}
 					},
 					"propertyOrder": 2
@@ -200,7 +204,7 @@ $(document).ready(function(e) {
 					"type": "number",
 					"title": "Product price",
 					"options": {
-						"input_width": "90%",
+						//"input_width": "90%",
 						"grid_columns": 2
 					},
 					"minimum": 0,
