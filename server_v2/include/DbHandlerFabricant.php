@@ -97,7 +97,7 @@ class DbHandlerFabricant extends DbHandler{
     }
 	
 	public function getProductsOfContractor($contractorid){
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.contractorid=? AND p.status=2");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.contractorid=? AND p.status=1");
 		$stmt->bind_param("i", $contractorid);
 		if ($stmt->execute()){
 			$stmt->store_result();
@@ -107,9 +107,9 @@ class DbHandlerFabricant extends DbHandler{
 			while($stmt->fetch()){
 				$res=array();
 				$res["id"] = $id;
-				//$res["contractorid"] = $contractorid;
+				$res["contractorid"] = $contractorid;
 				$res["name"] = $name;
-				//$res["status"] = $status;
+				$res["status"] = $status;
 				$res["price"] = $price;
 				$res["info"] = $info;
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);

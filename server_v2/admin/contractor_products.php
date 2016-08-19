@@ -24,68 +24,8 @@
     <script src="../libs/json-editor/jsoneditor.js"></script>
     
     <script>
-	function getProductJSON(id) {
-		var info = null;
-		var xmlhttp = new XMLHttpRequest();
-			xmlhttp.onreadystatechange = function() {
-				if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
-					$.each(xmlhttp.responseText, function(index, value) {
-						if (index == "info")
-							info = value;
-					});
-				}
-			}
-			xmlhttp.open("GET", "getProducts.php?id="+id, true);
-			xmlhttp.send();
-		return info;
-	}
-	
-	function getProducts(id) {
-		$.ajax( {
-        	url: "getProducts.php",
-			data: {id: id},
-			cache: false,
-			dataType: 'json',
-            success: function(jsondata) {
-				showProductsTable(jsondata);
-            }
-        });
-	}
-	
-	function showProductsTable(jsondata) {
-		var l = jsondata.length;
-		$('#cp tbody:first').empty();
-		var tbody = document.getElementById('cp').getElementsByTagName('tbody')[0];
-		for (var i = 0; i < l; i++) {
-			var nrow = tbody.insertRow(-1);
-			nrow.insertCell(-1).innerHTML = i + 1;
-			$.each(jsondata[i], function(index, value) {
-				/*if (index == "info") {
-					$.each(JSON.parse(value), function(i, val) {
-						if (i == "summary")
-							nrow.insertCell(-1).innerHTML = val;
-					});
-				}*/
-				nrow.insertCell(-1).innerHTML = value;
-			});
-		}
-	}
-	
-	function getProductsXML(index) {
-		if (index.length == 0) {
-			document.getElementById("txtHint").innerHTML = "";
-			return;
-		} else {
-			var xmlhttp = new XMLHttpRequest();
-			xmlhttp.onreadystatechange = function() {
-				if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
-					document.getElementById("txtHint").innerHTML = xmlhttp.responseText;
-				}
-			}
-			xmlhttp.open("GET", "getProducts.php?id="+index, true);
-			xmlhttp.send();
-		}
-	}
+	// Get contractor id
+	var contructorId = '<?php echo $_GET["id"]; ?>';
 	</script>
 </head>
 <body>
@@ -110,7 +50,7 @@ if($contractorProducts==NULL) {
 <p>Contractor products</p>
 <div class="row">
 <div class="container">
-	<table id="cp" class="table">
+	<table id="cp" class="table table-striped table-hover">
 	<thead>
 		<tr>
 			<th>#</th>
@@ -118,27 +58,117 @@ if($contractorProducts==NULL) {
 			<th>name</th>
 			<!--th>status</th-->
 			<th>price</th>
-            <th>info</th>
+            <!--th>info</th-->
             <th>changed at</th>
 		</tr>
 	</thead>
-	<tbody>
-	</tbody>
+    <tbody>
+    </tbody>
 	</table>
     <div id="editor_holder">
     </div>
 </div>
 </div>
 <script>
-$(document).ready(function(e) {
-	getProducts('<?php echo $_GET["id"]; ?>');
-	var stringjson = '{"name":{"text":"БАТОН 8 ЗЛАКОВ"},"name_full":{"text":"БАТОН 8 ЗЛАКОВ"},"price":51,"summary":{"text":"Размер - 28х10х7 см. Хлеб 8 злаков – это хлебобулочное изделие, которое выпекается из мучной композиции, которая в своем составе содержит 8 злаков, это: мука пшеничная, пшеничные хлопья, соевые хлопья, семена подсолнечника, пшеничная сухая клейковина, семена льна, хлопья ржаные, кукуруза экструдированная. Состав данного хлеба включает такой состав зерновых злаков, что данное хлебобулочное изделие приносит организму неоценимую пользу, ведь злаковые культуры имеют богатый витаминно-минеральный комплекс. Витамины группы В, Е, А, РР и природные соединения: холин, молибден, железо, йод, фосфор; калий, кальций, натрий, делают хлеб источником полезных и необходимых компонентов. Полезные свойства: Зерновой хлеб 8 злаков лучше других сортов хлеба насыщает организм витаминами группы В и микроэлементами. Сбалансированный состав данного хлеба помогает человеческому организму усваивать полезные витаминные соединения. Постоянное употребление хлеба 8 злаков положительно воздействует на работу желудочно-кишечного тракта. Природная клетчатка, содержащаяся в рассматриваемом хлебе, делает его необычайно полезным и особенным. Хлеб 8 злаков – полезный продукт питания в рационе человека любого возраста."},"icon":{"image_url":"http://igorserver.ru/v2/images/products/41_21_icon.jpg"},"details":[{"type":2,"slides":[{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154401.jpg"},"title":{"text":"Фото 1"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154802.jpg"},"title":{"text":"Фото 2"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_154903.jpg"},"title":{"text":"Фото 3"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155304.jpg"},"title":{"text":"Фото 4"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155405.jpg"},"title":{"text":"Фото 5"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_155706.jpg"},"title":{"text":"Фото 6"}},{"photo":{"image_url":"http://igorserver.ru/v2/images/products/41_21_156208.jpg"},"title":{"text":"Фото 7"}}]},{"type":1,"title":{"text":"Характеристики"},"photo":{"visible":false},"value":{"text":"СоставВода (фильтрованная), дрожжи, соль, мука (высший сорт), смесь 8 злаков.Пищевая ценность в 100 гБелки – 13,7 г, Жиры – 5,2 г, углеводы – 43 гЭнергетическая ценность в 100 г269 ккалРазмер28х10х7 смВес400 г"}},{"type":1,"title":{"text":"Описание"},"photo":{"visible":false},"value":{"text":"Хлеб 8 злаков – это хлебобулочное изделие, которое выпекается из мучной композиции, которая в своем составе содержит 8 злаков, это: мука пшеничная, пшеничные хлопья, соевые хлопья, семена подсолнечника, пшеничная сухая клейковина, семена льна, хлопья ржаные, кукуруза экструдированная. Состав данного хлеба включает такой состав зерновых злаков, что данное хлебобулочное изделие приносит организму неоценимую пользу, ведь злаковые культуры имеют богатый витаминно-минеральный комплекс. Витамины группы В, Е, А, РР и природные соединения: холин, молибден, железо, йод, фосфор; калий, кальций, натрий, делают хлеб источником полезных и необходимых компонентов. Полезные свойства: Зерновой хлеб 8 злаков лучше других сортов хлеба насыщает организм витаминами группы В и микроэлементами. Сбалансированный состав данного хлеба помогает человеческому организму усваивать полезные витаминные соединения. Постоянное употребление хлеба 8 злаков положительно воздействует на работу желудочно-кишечного тракта. Природная клетчатка, содержащаяся в рассматриваемом хлебе, делает его необычайно полезным и особенным. Хлеб 8 злаков – полезный продукт питания в рационе человека любого возраста."}}]}';
+$(document).ready(function() {
+	getProducts(contructorId);
 	
-	var schemajson = JSON.parse(stringjson);
+	$('#cp tr').click(function() {
+		alert($(this).html());
+	});
 	
-	//console.log(schemajson['name']['text']);
+	
+	// Get products list with ajax+php
+	function getProducts(contructorId, productId=null) {
+		$.ajax({
+			url: "getProducts.php",
+			data: {contructorId: contructorId, productId: productId},
+			cache: false,
+			async: true,
+			dataType: 'json',
+			success: function(jsondata) {
+				showProductsTable(jsondata);
+			}
+		});
+	}
+	// Create table with products
+	function showProductsTable(jsondata) {
+		//parsedJSON = jsondata;
+		$('#cp tbody:first').empty();
+		$.each(jsondata, function(i, value) {
+			var changedat = new Date(value["changed_at"]*1000).toLocaleDateString();
+			$('#cp').append('<tbody><tr><td></td><td>' + value["id"] + '</td><td>' + value["name"] + '</td><td>' + value["price"] + '</td><td>' + changedat + '</td></tr></tbody>');
+			//parsedJSON[i]["info"] = JSON.parse(value["info"]);
+		});
+	}
+	// Get product object with ajax+php
+	function getProduct(id) {
+		$.ajax({
+			url: "getProducts.php",
+			data: {id: id},
+			cache: false,
+			dataType: 'json',
+			success: function(jsondata) {
+				showProductsTable(jsondata);
+			}
+		});
+	}
+	// Create table with JS example
+	function showProductsTableJS(jsondata) {
+		var l = jsondata.length;
+		$('#cp tbody:first').empty();
+		var tbody = document.getElementById('cp').getElementsByTagName('tbody')[0];
+		for (var i = 0; i < l; i++) {
+			var nrow = tbody.insertRow(-1);
+			nrow.insertCell(-1).innerHTML = i + 1;
+			$.each(jsondata[i], function(index, value) {
+				/*if (index == "info") {
+					$.each(JSON.parse(value), function(i, val) {
+						if (i == "summary")
+							nrow.insertCell(-1).innerHTML = val;
+					});
+				}*/
+				nrow.insertCell(-1).innerHTML = value;
+			});
+		}
+	}
+	// xlmhttp example from w3schools
+	function getProductsXML(index) {
+		if (index.length == 0) {
+			document.getElementById("txtHint").innerHTML = "";
+			return;
+		} else {
+			var xmlhttp = new XMLHttpRequest();
+			xmlhttp.onreadystatechange = function() {
+				if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+					document.getElementById("txtHint").innerHTML = xmlhttp.responseText;
+				}
+			}
+			xmlhttp.open("GET", "getProducts.php?id="+index, true);
+			xmlhttp.send();
+		}
+	}
+	// Specify upload handler
+	JSONEditor.defaults.options.upload = function(type, file, cbs) {
+		var tick = 0;
+		var tickFunction = function() {
+			tick += 1;
+			console.log('progress: ' + tick);
+			if (tick < 100) {
+			cbs.updateProgress(tick);
+				window.setTimeout(tickFunction, 50)
+			} else if (tick == 100) {
+				cbs.updateProgress();
+				window.setTimeout(tickFunction, 500)
+			} else {
+				cbs.success('http://www.example.com/images/' + file.name);
+			}
+		};
+		window.setTimeout(tickFunction)
+	};
+	
 	// Initialize the editor with a JSON schema
-	var editor = new JSONEditor(document.getElementById('editor_holder'), {
+	/*var editor = new JSONEditor(document.getElementById('editor_holder'), {
 		theme: 'bootstrap3',
 		iconlib: "bootstrap3",
 		schema: {
@@ -152,7 +182,6 @@ $(document).ready(function(e) {
 				"name": {
 					"type": "object",
 					"title": "Product name",
-					//"id": "name_obj",
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
@@ -173,9 +202,6 @@ $(document).ready(function(e) {
 				"name_full": {
 					"type": "object",
 					"title": "Product full name",
-					/*"watch": {
-						"wname": "name_text"
-					},*/
 					"options": {
 						"disable_collapse": true,
 						"disable_edit_json": true,
@@ -186,16 +212,8 @@ $(document).ready(function(e) {
 						"text": {
 							"type": "string",
 							"title": "Enter the full name of product",
-							"template": "{{wname}}",
-							"watch": {
-								"wname": "root.name.text"
-							},
-							"format": "textarea",
-							"options": {
-								"expand_height": true
-							}//,
-							/*"minLength": 2,
-							"maxLength": 255*/
+							"format": "text",
+							"maxLength": 255
 						}
 					},
 					"propertyOrder": 2
@@ -246,7 +264,19 @@ $(document).ready(function(e) {
 						"image_url": {
 							"type": "string",
 							"title": "Enter icon image url of product",
-							"format": "url"
+							"format": "url",
+							"media": {
+								//"binaryEncoding": "base64",
+								"type": "image/png"
+							},
+							"options": {
+								"upload": true
+							},
+							"links": [
+								{
+									"href": "{{self}}"
+								}
+							]
 						}
 					},
 					"propertyOrder": 3
@@ -403,8 +433,16 @@ $(document).ready(function(e) {
 		}
 		//,startval: start_value
 	});
-	
+	// 
 	//editor.setValue(schemajson);
+	// If fullname input is empty, then will be filled by name input value
+	var name = editor.getEditor('root.name.text');
+	editor.watch(name.path, function() {
+		name_full = editor.getEditor('root.name_full.text');
+		if (name.getValue().length >= 2 && name_full.getValue() == "") {
+			name_full.setValue(name.getValue());
+		}
+	});*/
 });
 </script>
 </body>
