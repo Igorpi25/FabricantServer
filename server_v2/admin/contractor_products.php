@@ -26,7 +26,19 @@
     <script>
 	// Get contractor id
 	var contructorId = '<?php echo $_GET["id"]; ?>';
+	// This is the starting value for the editor
+	// We will use this to seed the initial editor 
+	// and to provide a "Create" button.
+	var startval = '{"contractorid":0,"id":0,"name":"","status":1,"price":0,"info":{"name":{"text":""},"name_full":{"text":""},"price":0,"summary":{"text":""},"icon":{"image_url":""},"details":[{"type":2,"slides":[{"photo":{"image_url":""},"title":{"text":""}}]}]},"changed_at":""}';
 	</script>
+    <style>
+		img {
+			vertical-align: middle;
+			border: 0;
+			page-break-inside: avoid;
+			max-width: 100% !important;
+		}
+	</style>
 </head>
 <body>
 <?php
@@ -47,106 +59,148 @@ if($contractorProducts==NULL) {
 <div class="page-header">
 	<h1>Продукты</h1>
 </div>
-<p>Contractor products</p>
-<div class="row">
 <div class="container">
-	<table id="cp" class="table table-striped table-hover">
-	<thead>
-		<tr>
-			<th>#</th>
-			<th>id</th>
-			<th>name</th>
-			<!--th>status</th-->
-			<th>price</th>
-            <!--th>info</th-->
-            <th>changed at</th>
-		</tr>
-	</thead>
-    <tbody>
-    </tbody>
-	</table>
-    <div id="editor_holder">
+	<p>Contractor products</p>
+	<div class="row">
+    	<div class="btn-group">
+			<button id="createNewModal" type="button" class="btn btn-default btn-sm">Create</button>
+			<button id="updateModal" type="button" class="btn btn-default btn-sm">Update</button>
+            <button id="deleteProduct" type="button" class="btn btn-default btn-sm">Delete</button>
+ 		</div>
+	</div>
+	<div class="row">
+        <table id="ptable" class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>id</th>
+                <th>name</th>
+                <th>price</th>
+                <th>changed at</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+        </table>
     </div>
 </div>
-</div>
+<!-- Modal-->
+	<div class="modal fade" id="productModal" role="dialog">
+		<div class="modal-dialog modal-lg">
+			<div class="modal-content">
+				<div class="modal-header">
+					<button type="button" class="close" data-dismiss="modal">&times;</button>
+					<h4 class="modal-title">Product</h4>
+				</div>
+				<div class="modal-body">
+					<div id="editor_holder">
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button id="updateData" type="button" class="btn btn-primary" data-dismiss="modal">Save changes</button>
+					<button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+				</div>
+			</div>
+		</div>
+	</div>
+<!-- Modal-->
 <script>
 $(document).ready(function() {
 	getProducts(contructorId);
 	
-	$('#cp tr').click(function() {
-		alert($(this).html());
+	$('#createNewModal').click(function(){
+		//editor.setValue(JSON.parse(startval));
+		//$('.btn-primary').text('Create product');
+		//$(productModal).modal();
+		//console.log(editor.getValue());
+		createProduct(contructorId);
+	});
+	
+	$('#updateModal').click(function(){
+		alert('update clicked');
+	});
+	
+	$('#deleteProduct').click(function(){
+		alert('delete clicked');
+	});
+	
+	$('#updateData').click(function(){
+		var value = editor.getValue();
+		updateProduct(value.id, value.name, value.price, JSON.stringify(value.info), value.status);
+		getProducts(contructorId);
+	});
+	
+	$('#ptable tbody:first').on('click', 'tr', function() {
+		//editor.setValue(JSON.parse($(this).data('info')));
+		editor.setValue($(this).data());
+		$('.btn-primary').text('Save changes');
+		$(productModal).modal();
 	});
 	
 	
 	// Get products list with ajax+php
-	function getProducts(contructorId, productId=null) {
+	function getProducts(contractorId) {
 		$.ajax({
+			method: "GET",
 			url: "getProducts.php",
-			data: {contructorId: contructorId, productId: productId},
+			data: {contractorId: contractorId, type: 2},
 			cache: false,
-			async: true,
-			dataType: 'json',
+			dataType: "json",
 			success: function(jsondata) {
 				showProductsTable(jsondata);
+			},
+			error: function(jqXhr, textStatus, errorThrown ){
+				console.log(errorThrown);
 			}
 		});
 	}
-	// Create table with products
+	// Update product with ajax+php
+	function updateProduct(id, name, price, info, status) {
+		$.ajax({
+			method: "POST",
+			url: "getProducts.php",
+			data: {id: id, name: name, price: price, info: info, status: status, type: 3},
+			cache: false,
+			dataType: "json",
+			success: function(jsondata) {
+				//console.log(jsondata);
+			},
+			error: function(jqXhr, textStatus, errorThrown ){
+				console.log(errorThrown);
+			}
+		});
+	}
+	// Create product with ajax+php
+	function createProduct(contractorId) {
+		$.ajax({
+			method: "GET",
+			url: "getProducts.php",
+			data: {contractorId: contractorId, type: 1},
+			cache: false,
+			dataType: "json",
+			success: function(jsondata) {
+				editor.setValue(JSON.parse(startval));
+				var cId = editor.getEditor('root.contractorid');
+				cId.setValue(jsondata['contractorId']);
+				var id = editor.getEditor('root.id');
+				id.setValue(jsondata['id']);
+				$('.btn-primary').text('Create product');
+				$(productModal).modal();
+			},
+			error: function(jqXhr, textStatus, errorThrown ){
+				console.log(errorThrown);
+			}
+		});
+	}
+	// Create table with products and set data attributes to JQuery
 	function showProductsTable(jsondata) {
-		//parsedJSON = jsondata;
-		$('#cp tbody:first').empty();
+		$('#ptable tbody:first').empty();
 		$.each(jsondata, function(i, value) {
-			var changedat = new Date(value["changed_at"]*1000).toLocaleDateString();
-			$('#cp').append('<tbody><tr><td></td><td>' + value["id"] + '</td><td>' + value["name"] + '</td><td>' + value["price"] + '</td><td>' + changedat + '</td></tr></tbody>');
-			//parsedJSON[i]["info"] = JSON.parse(value["info"]);
+			value["changed_at"] = new Date(value["changed_at"]*1000).toLocaleDateString();
+			value["info"] = JSON.parse(value["info"]);
+			$('#ptable tbody:first').append('<tr><td></td><td>' + value["id"] + '</td><td>' + value["name"] + '</td><td>' + value["price"] + '</td><td>' + value["changed_at"] + '</td></tr>');
+			$('#ptable tbody:first').find('tr:last').data(value);
 		});
-	}
-	// Get product object with ajax+php
-	function getProduct(id) {
-		$.ajax({
-			url: "getProducts.php",
-			data: {id: id},
-			cache: false,
-			dataType: 'json',
-			success: function(jsondata) {
-				showProductsTable(jsondata);
-			}
-		});
-	}
-	// Create table with JS example
-	function showProductsTableJS(jsondata) {
-		var l = jsondata.length;
-		$('#cp tbody:first').empty();
-		var tbody = document.getElementById('cp').getElementsByTagName('tbody')[0];
-		for (var i = 0; i < l; i++) {
-			var nrow = tbody.insertRow(-1);
-			nrow.insertCell(-1).innerHTML = i + 1;
-			$.each(jsondata[i], function(index, value) {
-				/*if (index == "info") {
-					$.each(JSON.parse(value), function(i, val) {
-						if (i == "summary")
-							nrow.insertCell(-1).innerHTML = val;
-					});
-				}*/
-				nrow.insertCell(-1).innerHTML = value;
-			});
-		}
-	}
-	// xlmhttp example from w3schools
-	function getProductsXML(index) {
-		if (index.length == 0) {
-			document.getElementById("txtHint").innerHTML = "";
-			return;
-		} else {
-			var xmlhttp = new XMLHttpRequest();
-			xmlhttp.onreadystatechange = function() {
-				if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
-					document.getElementById("txtHint").innerHTML = xmlhttp.responseText;
-				}
-			}
-			xmlhttp.open("GET", "getProducts.php?id="+index, true);
-			xmlhttp.send();
-		}
 	}
 	// Specify upload handler
 	JSONEditor.defaults.options.upload = function(type, file, cbs) {
@@ -156,10 +210,10 @@ $(document).ready(function() {
 			console.log('progress: ' + tick);
 			if (tick < 100) {
 			cbs.updateProgress(tick);
-				window.setTimeout(tickFunction, 50)
+				window.setTimeout(tickFunction, 10)
 			} else if (tick == 100) {
 				cbs.updateProgress();
-				window.setTimeout(tickFunction, 500)
+				window.setTimeout(tickFunction, 100)
 			} else {
 				cbs.success('http://www.example.com/images/' + file.name);
 			}
@@ -168,10 +222,375 @@ $(document).ready(function() {
 	};
 	
 	// Initialize the editor with a JSON schema
-	/*var editor = new JSONEditor(document.getElementById('editor_holder'), {
+	var editor = new JSONEditor(document.getElementById('editor_holder'), {
+		//ajax: true,
 		theme: 'bootstrap3',
 		iconlib: "bootstrap3",
 		schema: {
+			"type": "object",
+			"title": "Product",
+			"format": "grid",
+			"options": {
+				//"disable_edit_json": true
+			},
+			"properties": {
+				"contractorid": {
+					"type": "number",
+					"title": "Contructor ID",
+					"options": {
+						"grid_columns": 3
+					},
+					"propertyOrder": 1
+				},
+				"id": {
+					"type": "number",
+					"title": "Product ID",
+					"options": {
+						"grid_columns": 3
+					},
+					"propertyOrder": 2
+				},
+				"name": {
+					"type": "string",
+					"title": "Product name",
+					"format": "text",
+					"options": {
+						"grid_columns": 8
+					},
+					"minLength": 2,
+					"maxLength": 255,
+					"propertyOrder": 5
+				},
+				"status": {
+					"type": "number",
+					"title": "Product status",
+					"enum": [1,2,3,4],
+					"default": 1,
+					"options": {
+						"grid_columns": 3
+					},
+					"propertyOrder": 3
+				},
+				"price": {
+					"type": "number",
+					"title": "Product price",
+					"options": {
+						"grid_columns": 4
+					},
+					"minimum": 0,
+					"maximum": 9999999999,
+					"propertyOrder": 6
+				},
+				"info": {
+					"type": "object",
+					"title": "Product info",
+					"format": "grid",
+					"options": {
+						//"disable_edit_json": true,
+						"grid_columns": 12
+					},
+					"properties": {
+						"name": {
+							"type": "object",
+							"title": "Product name",
+							"options": {
+								"disable_collapse": true,
+								"disable_edit_json": true,
+								"disable_properties": true,
+								"grid_columns": 4,
+								"hidden": true
+							},
+							"properties": {
+								"text": {
+									"type": "string",
+									"title": "Enter the name of product",
+									"format": "text",
+									"template": "{{pname}}",
+									"watch": {
+										"pname": "root.name"
+									},
+									"minLength": 2,
+									"maxLength": 255
+								}
+							},
+							"propertyOrder": 1
+						},
+						"name_full": {
+							"type": "object",
+							"title": "Product full name",
+							"options": {
+								"disable_collapse": true,
+								"disable_edit_json": true,
+								"disable_properties": true,
+								"grid_columns": 8
+							},
+							"properties": {
+								"text": {
+									"type": "string",
+									"title": "Enter the full name of product",
+									"format": "text",
+									"maxLength": 255
+								}
+							},
+							"propertyOrder": 2
+						},
+						"price": {
+							"type": "number",
+							"title": "Product price",
+							"options": {
+								"input_width": "30%",
+								"grid_columns": 12,
+								"hidden": true
+							},
+							"template": "{{pprice}}",
+							"watch": {
+								"pprice": "root.price"
+							},
+							"minimum": 0,
+							"maximum": 99999,
+							"propertyOrder": 5
+						},
+						"summary": {
+							"type": "object",
+							"title": "Product summary information",
+							"options": {
+								"disable_collapse": true,
+								"disable_edit_json": true,
+								"disable_properties": true,
+								"grid_columns": 8
+							},
+							"properties": {
+								"text": {
+									"type": "string",
+									"title": "Enter summary information of product",
+									"format": "textarea",
+									"options": {
+										//"expand_height": true,
+										"input_height": "100px"
+									},
+									"minLength": 2
+								}
+							},
+							"propertyOrder": 3
+						},
+						"icon": {
+							"type": "object",
+							"title": "Product icon image url",
+							"description": "Frist image from slides array will be auto selected for icon",
+							"options": {
+								"disable_collapse": true,
+								"disable_edit_json": true,
+								"disable_properties": true,
+								"grid_columns": 12
+							},
+							"properties": {
+								"image_url": {
+									"type": "string",
+									"title": "Uploaded icon image url of product",
+									//"format": "url",
+									"media": {
+										//"binaryEncoding": "base64",
+										"type": "image/*"
+									},
+									"links": [
+										{
+											"href": "{{self}}",
+											"mediaType": "image/*"
+										}
+									]
+								}
+							},
+							"propertyOrder": 4
+						},
+						"details": {
+							"type": "array",
+							"title": "Details",
+							"options": {
+								"grid_columns": 10
+							},
+							"minItems": 1,
+							"propertyOrder": 6,
+							"format": "tabs",
+							"items": {
+								"type": "object",
+								"title": "Detail",
+								"options": {
+									"disable_collapse": true,
+									"disable_edit_json": true,
+									"disable_properties": true
+								},
+								"oneOf": [
+									{
+										"title": "Slider",
+										"properties": {
+											"type": {
+												"type": "integer",
+												"enum": [2],
+												"options": {
+													"hidden": true
+												}
+											},
+											"slides": {
+												"type": "array",
+												"title": "Slides",
+												"format": "tabs",
+												"uniqueItems": true,
+												"minItems": 1,
+												"items": {
+													"type": "object",
+													"title": "Slide",
+													"options": {
+														"disable_collapse": true,
+														"disable_edit_json": true,
+														"disable_properties": true
+													},
+													"properties": {
+														"photo": {
+															"type": "object",
+															"title": "Product photo url",
+															"options": {
+																"disable_collapse": true,
+																"disable_edit_json": true,
+																"disable_properties": true
+															},
+															"properties": {
+																"image_url": {
+																	"type": "string",
+																	"title": "Upload product photo",
+																	"format": "url",
+																	"media": {
+																		"type": "image/*"
+																	},
+																	"options": {
+																		"upload": true
+																	},
+																	"links": [
+																		{
+																			"href": "{{self}}",
+																			"mediaType": "image/*"
+																		}
+																	]
+																}
+															}
+														},
+														"title": {
+															"type": "object",
+															"title": "Product photo description",
+															"options": {
+																"disable_collapse": true,
+																"disable_edit_json": true,
+																"disable_properties": true
+															},
+															"properties": {
+																"text": {
+																	"type": "string",
+																	"title": "Enter description of product photo",
+																	"format": "textarea",
+																	"media": {
+																		"type": "text/html"
+																	},
+																	"options": {
+																		//"expand_height": true,
+																		"input_height": "100px"
+																	}
+																}
+															}
+														}
+													}
+												}
+											}
+										},
+										"required": ["type", "slides"],
+										"additionalProperties": false
+									},
+									{
+										"title": "Info",
+										"properties": {
+											"type": {
+												"type": "integer",
+												"enum": [1],
+												"options": {
+													"hidden": true
+												}
+											},
+											"title": {
+												"type": "object",
+												"title": "Information title",
+												"options": {
+													"disable_collapse": true,
+													"disable_edit_json": true,
+													"disable_properties": true
+												},
+												"properties": {
+													"text": {
+														"type": "string",
+														"title": "Enter information title",
+														"format": "text",
+														"minLength": 1
+													}
+												}
+											},
+											"photo": {
+												"type": "object",
+												"title": "Information photo",
+												"description": "Default selected false, not yet realized",
+												"options": {
+													"disable_collapse": true,
+													"disable_edit_json": true,
+													"disable_properties": true
+												},
+												"properties": {
+													"visible": {
+														"type": "boolean",
+														"format": "checkbox",
+														"default": false
+													}
+												}
+											},
+											"value": {
+												"type": "object",
+												"title": "Information text",
+												"options": {
+													"disable_collapse": true,
+													"disable_edit_json": true,
+													"disable_properties": true
+												},
+												"properties": {
+													"text": {
+														"type": "string",
+														"title": "Enter information text",
+														//"format": "textarea",
+														"media": {
+															"type": "text/html"
+														},
+														"options": {
+															//"expand_height": true,
+															"input_height": "100px"
+														}
+													}
+												}
+											}
+										},
+										"required": ["type", "title", "photo", "value"],
+										"additionalProperties": false
+									}
+								]
+							}
+						}
+					},
+					"propertyOrder": 7
+				},
+				"changed_at": {
+					"type": "string",
+					"format": "datetime",
+					"options": {
+						"grid_columns": 3
+					},
+					"propertyOrder": 4
+				}
+			}
+		}
+		/*schema: {
 			"type": "object",
 			"title": "Product",
 			"format": "grid",
@@ -222,8 +641,8 @@ $(document).ready(function() {
 					"type": "number",
 					"title": "Product price",
 					"options": {
-						//"input_width": "90%",
-						"grid_columns": 2
+						"input_width": "50%",
+						"grid_columns": 12
 					},
 					"minimum": 0,
 					"maximum": 99999,
@@ -243,9 +662,9 @@ $(document).ready(function() {
 							"type": "string",
 							"title": "Enter summary information of product",
 							"format": "textarea",
-							"options": {
-								"expand_height": true
-							},
+							//"options": {
+							//	"expand_height": true
+							//},
 							"minLength": 2
 						}
 					},
@@ -430,19 +849,30 @@ $(document).ready(function() {
 					}
 				}
 			}
-		}
+		}*/
 		//,startval: start_value
 	});
-	// 
-	//editor.setValue(schemajson);
+	editor.getEditor('root.contractorid').disable();
+	editor.getEditor('root.id').disable();
+	editor.getEditor('root.status').disable();
+	editor.getEditor('root.changed_at').disable();
+	editor.getEditor('root.info.icon').disable();
+	
 	// If fullname input is empty, then will be filled by name input value
-	var name = editor.getEditor('root.name.text');
+	var name = editor.getEditor('root.name');
 	editor.watch(name.path, function() {
-		name_full = editor.getEditor('root.name_full.text');
+		var name_full = editor.getEditor('root.info.name_full.text');
 		if (name.getValue().length >= 2 && name_full.getValue() == "") {
 			name_full.setValue(name.getValue());
 		}
-	});*/
+	});
+	var fslide = editor.getEditor('root.info.details.0.slides.0.photo.image_url');
+	editor.watch(fslide.path, function() {
+		var icon = editor.getEditor('root.info.icon.image_url');
+		icon.setValue(fslide.getValue());
+	});
+	
+	//editor.setValue(schemajson);
 });
 </script>
 </body>

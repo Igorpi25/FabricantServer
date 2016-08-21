@@ -31,9 +31,9 @@ class DbHandlerFabricant extends DbHandler{
 		// insert query
 		$stmt = $this->conn->prepare("INSERT INTO products(contractorid, name, price, info) values(?, ?, ?, ?)");
 		$stmt->bind_param("isds", $contractorid, $name, $price, $info);
-
-		$result = $stmt->execute();
-
+		$stmt->execute();
+		//$result = $stmt->execute();
+		$result = $this->conn->insert_id;
 		$stmt->close();
 
         return $result;
