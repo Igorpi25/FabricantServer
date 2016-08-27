@@ -55,8 +55,8 @@ class DbHandlerFabricant extends DbHandler{
 	public function removeProduct($id) {
         
 		// update query
-		$stmt = $this->conn->prepare("UPDATE `products` SET `status` = ? , `changed_at` = CURRENT_TIMESTAMP() WHERE `id` = ? ");
-		$stmt->bind_param("ii", 4, $id);
+		$stmt = $this->conn->prepare("UPDATE `products` SET `status` = 4 , `changed_at` = CURRENT_TIMESTAMP() WHERE `id` = ? ");
+		$stmt->bind_param("i", $id);
 
 		$result = $stmt->execute();
 

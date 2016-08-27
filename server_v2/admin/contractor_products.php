@@ -5,7 +5,7 @@
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
-	<title>Bootstrap 101 Template</title>
+	<title>Constractor products</title>
 	<!-- Latest compiled and minified CSS -->
 	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
 	<!-- Optional theme -->
@@ -25,7 +25,7 @@
     
     <script>
 	// Get contractor id
-	var contructorId = '<?php echo $_GET["id"]; ?>';
+	var contructorid = '<?php echo $_GET["id"]; ?>';
 	// This is the starting value for the editor
 	// We will use this to seed the initial editor 
 	// and to provide a "Create" button.
@@ -46,13 +46,13 @@ require_once dirname(__FILE__).'/../include/DbHandlerFabricant.php';
 session_start();
 include 'auth.php';
 if (!isset($_GET['id'])){
-	header("Location: http://".$_SERVER['HTTP_HOST']."/fabricant/server_v2/admin/contractors.php"); //"/v2/admin/contractors.php");
+	header("Location: http://".$_SERVER['HTTP_HOST']."/v2/admin/contractors.php");
 	exit;
 }
 $fdb = new DbHandlerFabricant();
 $contractorProducts=$fdb->getProductsOfContractor($_GET['id']);
 if($contractorProducts==NULL) {
-	header("Location: http://".$_SERVER['HTTP_HOST']."/fabricant/server_v2/admin/contractors.php"); //"/v2/admin/contractors.php");
+	header("Location: http://".$_SERVER['HTTP_HOST']."/v2/admin/contractors.php");
 	exit;
 }
 ?>
@@ -63,9 +63,9 @@ if($contractorProducts==NULL) {
 	<p>Contractor products</p>
 	<div class="row">
     	<div class="btn-group">
-			<button id="createNewModal" type="button" class="btn btn-default btn-sm">Create</button>
-			<button id="updateModal" type="button" class="btn btn-default btn-sm">Update</button>
-            <button id="deleteProduct" type="button" class="btn btn-default btn-sm">Delete</button>
+			<button id="newProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-plus-sign"></span> Create</button>
+			<button id="editProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-edit"></span> Edit</button>
+            <button id="removeProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-minus-sign"></span> Delete</button>
  		</div>
 	</div>
 	<div class="row">
@@ -97,59 +97,120 @@ if($contractorProducts==NULL) {
 					</div>
 				</div>
 				<div class="modal-footer">
-					<button id="updateData" type="button" class="btn btn-primary" data-dismiss="modal">Save changes</button>
-					<button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+					<button id="updateModalData" type="button" class="btn btn-success"><span class="glyphicon glyphicon-ok"></span> Save changes</button>
+					<button id="cancelModalData" type="button" class="btn btn-default" data-dismiss="modal"><span class="glyphicon glyphicon-remove"></span> Cancel</button>
 				</div>
 			</div>
 		</div>
 	</div>
 <!-- Modal-->
+
 <script>
 $(document).ready(function() {
-	getProducts(contructorId);
-	
-	$('#createNewModal').click(function(){
-		//editor.setValue(JSON.parse(startval));
-		//$('.btn-primary').text('Create product');
-		//$(productModal).modal();
-		//console.log(editor.getValue());
-		createProduct(contructorId);
+//$(document).ready(function (e) {
+
+	$("#uploadimage").on('submit',function(e) {
+		e.preventDefault();
+		//new FormData(this)
+		console.log(new FormData(this))
+		//console.log(this);
 	});
-	
-	$('#updateModal').click(function(){
-		alert('update clicked');
+
+
+	// Setting edit and remove button disabled
+	$('#editProduct').prop('disabled', true);
+	$('#removeProduct').prop('disabled', true);
+	// Getting products list
+	getProducts(contructorid);
+	// Create event listener on modal creating
+	$('#productModal').on('shown.bs.modal', function () {
+		editor.on('change', editorChange);
+		$('#updateModalData').prop('disabled', true);
 	});
-	
-	$('#deleteProduct').click(function(){
-		alert('delete clicked');
+	// Remove event listener on modal hide
+	$('#productModal').on('hide.bs.modal', function () {
+		editor.off('change', editorChange);
+		$('#editProduct').prop('disabled', true);
+		$('#removeProduct').prop('disabled', true);
+		$('input:checkbox').prop('checked', false);
 	});
-	
-	$('#updateData').click(function(){
+	// 'Update' button clicked
+	$('#updateModalData').on('click', function() {
 		var value = editor.getValue();
 		updateProduct(value.id, value.name, value.price, JSON.stringify(value.info), value.status);
-		getProducts(contructorId);
+		$('#productModal').modal('hide');
 	});
-	
-	$('#ptable tbody:first').on('click', 'tr', function() {
-		//editor.setValue(JSON.parse($(this).data('info')));
-		editor.setValue($(this).data());
-		$('.btn-primary').text('Save changes');
-		$(productModal).modal();
+	// 'Create' button clicked
+	$('#newProduct').on('click', function() {
+		createProduct(contructorid);
 	});
-	
-	
+	// 'Edit' button clicked
+	$('#editProduct').on('click', function() {
+		editModal($('input:checkbox:checked').closest('tr').data());
+	});
+	// 'Delete' button clicked
+	$('#removeProduct').on('click', function() {
+		removeProduct($('input:checkbox:checked').closest('tr').data('id'));
+	});
+	// On checkbox check/uncheck enable/disable edit and remove button
+	$('#ptable tbody:first').on('change', ':checkbox', function() {
+		var status = $(this).prop('checked');
+		$('input:checkbox').prop('checked', false);
+		$(this).prop('checked', status);
+		$('#editProduct').prop('disabled', !status);
+		$('#removeProduct').prop('disabled', !status);
+		/*if ($(this).is(':checked')) {
+			//console.log($(this).prop('checked'));
+		}
+		else if ($(this).is(':not(:checked)')) {
+			//console.log($(this).prop('checked'));
+		}*/
+	});
+	// Show modal window of product on row click
+	$('#ptable tbody:first').on('click', 'td:not(:first-child)', function() {
+		editModal($(this).parent().data());
+	});
+	//
+	function editModal(data) {
+		editor.setValue(data);
+		$('.btn-primary').text(' Save changes');
+		$('#productModal').modal({backdrop: 'static'});
+	}
 	// Get products list with ajax+php
-	function getProducts(contractorId) {
+	function getProducts(contractorid) {
 		$.ajax({
 			method: "GET",
-			url: "getProducts.php",
-			data: {contractorId: contractorId, type: 2},
+			url: "http://igorserver.ru/v2/admin/products",
+			data: {contractorid: contractorid},
 			cache: false,
 			dataType: "json",
-			success: function(jsondata) {
-				showProductsTable(jsondata);
+			success: function(response) {
+				if (response["error"] == false)
+					showProductsTable(response["products"]);
 			},
-			error: function(jqXhr, textStatus, errorThrown ){
+			error: function(jqXhr, textStatus, errorThrown ) {
+				console.log(errorThrown);
+			}
+		});
+	}
+	// Create product with ajax+php
+	function createProduct(contractorid) {
+		$.ajax({
+			method: "POST",
+			url: "http://igorserver.ru/v2/admin/products",
+			data: {contractorid: contractorid},
+			cache: false,
+			dataType: "json",
+			success: function(response) {
+				editor.setValue(JSON.parse(startval));
+				var cId = editor.getEditor("root.contractorid");
+				cId.setValue(response["contractorid"]);
+				var id = editor.getEditor("root.id");
+				id.setValue(response["id"]);
+				$('.btn-primary').text(' Create product');
+				$('#productModal').modal({backdrop: 'static'});
+			},
+			error: function(jqXhr, textStatus, errorThrown ) {
 				console.log(errorThrown);
 			}
 		});
@@ -157,37 +218,33 @@ $(document).ready(function() {
 	// Update product with ajax+php
 	function updateProduct(id, name, price, info, status) {
 		$.ajax({
-			method: "POST",
-			url: "getProducts.php",
-			data: {id: id, name: name, price: price, info: info, status: status, type: 3},
+			method: "PUT",
+			url: "http://igorserver.ru/v2/admin/products/" + id,
+			data: {id: id, name: name, price: price, info: info, status: status},
 			cache: false,
 			dataType: "json",
-			success: function(jsondata) {
-				//console.log(jsondata);
+			success: function(response) {
+				if (response["error"] == false)
+					getProducts(contructorid);
 			},
-			error: function(jqXhr, textStatus, errorThrown ){
+			error: function(jqXhr, textStatus, errorThrown) {
 				console.log(errorThrown);
 			}
 		});
 	}
-	// Create product with ajax+php
-	function createProduct(contractorId) {
+	// Update product with ajax+php
+	function removeProduct(id) {
 		$.ajax({
-			method: "GET",
-			url: "getProducts.php",
-			data: {contractorId: contractorId, type: 1},
+			method: "DELETE",
+			url: "http://igorserver.ru/v2/admin/products/" + id,
 			cache: false,
 			dataType: "json",
-			success: function(jsondata) {
-				editor.setValue(JSON.parse(startval));
-				var cId = editor.getEditor('root.contractorid');
-				cId.setValue(jsondata['contractorId']);
-				var id = editor.getEditor('root.id');
-				id.setValue(jsondata['id']);
-				$('.btn-primary').text('Create product');
-				$(productModal).modal();
+			success: function(response) {
+				if (response["error"] == false)
+					getProducts(contructorid);
+				alert(response["message"]);
 			},
-			error: function(jqXhr, textStatus, errorThrown ){
+			error: function(jqXhr, textStatus, errorThrown ) {
 				console.log(errorThrown);
 			}
 		});
@@ -198,32 +255,36 @@ $(document).ready(function() {
 		$.each(jsondata, function(i, value) {
 			value["changed_at"] = new Date(value["changed_at"]*1000).toLocaleDateString();
 			value["info"] = JSON.parse(value["info"]);
-			$('#ptable tbody:first').append('<tr><td></td><td>' + value["id"] + '</td><td>' + value["name"] + '</td><td>' + value["price"] + '</td><td>' + value["changed_at"] + '</td></tr>');
+			$('#ptable tbody:first').append('<tr><td><input type="checkbox" value=""></td><td>' + value["id"] + '</td><td>' + value["name"] + '</td><td>' + value["price"] + '</td><td>' + value["changed_at"] + '</td></tr>');
 			$('#ptable tbody:first').find('tr:last').data(value);
 		});
 	}
 	// Specify upload handler
 	JSONEditor.defaults.options.upload = function(type, file, cbs) {
-		var tick = 0;
-		var tickFunction = function() {
-			tick += 1;
-			console.log('progress: ' + tick);
-			if (tick < 100) {
-			cbs.updateProgress(tick);
-				window.setTimeout(tickFunction, 10)
-			} else if (tick == 100) {
-				cbs.updateProgress();
-				window.setTimeout(tickFunction, 100)
-			} else {
-				cbs.success('http://www.example.com/images/' + file.name);
+		cbs.updateProgress();
+		var formdata = new FormData();
+		formdata.append("image", file);
+		var prefix = editor.getEditor('root.contractorid').getValue().toString() + editor.getEditor('root.id').getValue().toString();
+		$.ajax({
+			method: "POST",
+			url: "http://igorserver.ru/v2/admin/products/upload/" + prefix,
+			data: formdata,
+			cache: false,
+			contentType: false,
+			processData : false,
+			dataType: "json",
+			success: function(response) {
+				if (response["error"] == false)
+					cbs.success("http://" + response["url"]);
+			},
+			error: function(jqXhr, textStatus, errorThrown ) {
+				console.log(errorThrown);
 			}
-		};
-		window.setTimeout(tickFunction)
+		});
 	};
 	
 	// Initialize the editor with a JSON schema
 	var editor = new JSONEditor(document.getElementById('editor_holder'), {
-		//ajax: true,
 		theme: 'bootstrap3',
 		iconlib: "bootstrap3",
 		schema: {
@@ -231,7 +292,7 @@ $(document).ready(function() {
 			"title": "Product",
 			"format": "grid",
 			"options": {
-				//"disable_edit_json": true
+				"disable_edit_json": true
 			},
 			"properties": {
 				"contractorid": {
@@ -286,7 +347,7 @@ $(document).ready(function() {
 					"title": "Product info",
 					"format": "grid",
 					"options": {
-						//"disable_edit_json": true,
+						"disable_edit_json": true,
 						"grid_columns": 12
 					},
 					"properties": {
@@ -309,7 +370,7 @@ $(document).ready(function() {
 									"watch": {
 										"pname": "root.name"
 									},
-									"minLength": 2,
+									//"minLength": 2,
 									"maxLength": 255
 								}
 							},
@@ -367,8 +428,7 @@ $(document).ready(function() {
 									"options": {
 										//"expand_height": true,
 										"input_height": "100px"
-									},
-									"minLength": 2
+									}
 								}
 							},
 							"propertyOrder": 3
@@ -590,274 +650,29 @@ $(document).ready(function() {
 				}
 			}
 		}
-		/*schema: {
-			"type": "object",
-			"title": "Product",
-			"format": "grid",
-			"options": {
-				"layout": "grid"
-			},
-			"properties": {
-				"name": {
-					"type": "object",
-					"title": "Product name",
-					"options": {
-						"disable_collapse": true,
-						"disable_edit_json": true,
-						"disable_properties": true,
-						"grid_columns": 4
-					},
-					"properties": {
-						"text": {
-							"type": "string",
-							"title": "Enter the name of product",
-							"format": "text",
-							"minLength": 2,
-							"maxLength": 255
-						}
-					},
-					"propertyOrder": 1
-				},
-				"name_full": {
-					"type": "object",
-					"title": "Product full name",
-					"options": {
-						"disable_collapse": true,
-						"disable_edit_json": true,
-						"disable_properties": true,
-						"grid_columns": 8
-					},
-					"properties": {
-						"text": {
-							"type": "string",
-							"title": "Enter the full name of product",
-							"format": "text",
-							"maxLength": 255
-						}
-					},
-					"propertyOrder": 2
-				},
-				"price": {
-					"type": "number",
-					"title": "Product price",
-					"options": {
-						"input_width": "50%",
-						"grid_columns": 12
-					},
-					"minimum": 0,
-					"maximum": 99999,
-					"propertyOrder": 5
-				},
-				"summary": {
-					"type": "object",
-					"title": "Product summary information",
-					"options": {
-						"disable_collapse": true,
-						"disable_edit_json": true,
-						"disable_properties": true,
-						"grid_columns": 8
-					},
-					"properties": {
-						"text": {
-							"type": "string",
-							"title": "Enter summary information of product",
-							"format": "textarea",
-							//"options": {
-							//	"expand_height": true
-							//},
-							"minLength": 2
-						}
-					},
-					"propertyOrder": 4
-				},
-				"icon": {
-					"type": "object",
-					"title": "Product icon image url",
-					"options": {
-						"disable_collapse": true,
-						"disable_edit_json": true,
-						"disable_properties": true,
-						"grid_columns": 4
-					},
-					"properties": {
-						"image_url": {
-							"type": "string",
-							"title": "Enter icon image url of product",
-							"format": "url",
-							"media": {
-								//"binaryEncoding": "base64",
-								"type": "image/png"
-							},
-							"options": {
-								"upload": true
-							},
-							"links": [
-								{
-									"href": "{{self}}"
-								}
-							]
-						}
-					},
-					"propertyOrder": 3
-				},
-				"details": {
-					"type": "array",
-					"title": "Details",
-					"options": {
-						"grid_columns": 10
-					},
-					"propertyOrder": 6,
-					"format": "tabs",
-					"items": {
-						"type": "object",
-						"title": "Detail",
-						"options": {
-							"disable_collapse": true,
-							"disable_edit_json": true,
-							"disable_properties": true
-						},
-						"oneOf": [
-							{
-								"title": "Slider",
-								"properties": {
-									"type": {
-										"type": "integer",
-										"enum": [2],
-										"options": {
-											"hidden": true
-										}
-									},
-									"slides": {
-										"type": "array",
-										"title": "Slides",
-										"format": "tabs",
-										"uniqueItems": true,
-										"minItems": 1,
-										"items": {
-											"type": "object",
-											"title": "Slide",
-											"options": {
-												"disable_collapse": true,
-												"disable_edit_json": true,
-												"disable_properties": true
-											},
-											"properties": {
-												"photo": {
-													"type": "object",
-													"title": "Product photo url",
-													"options": {
-														"disable_collapse": true,
-														"disable_edit_json": true,
-														"disable_properties": true
-													},
-													"properties": {
-														"image_url": {
-															"type": "string",
-															"title": "Enter product photo url",
-															"format": "url"
-														}
-													}
-												},
-												"title": {
-													"type": "object",
-													"title": "Product photo description",
-													"options": {
-														"disable_collapse": true,
-														"disable_edit_json": true,
-														"disable_properties": true
-													},
-													"properties": {
-														"text": {
-															"type": "string",
-															"title": "Enter description of product photo",
-															"format": "textarea"
-														}
-													}
-												}
-											}
-										}
-									}
-								},
-								"required": ["type", "slides"],
-								"additionalProperties": false
-							},
-							{
-								"title": "Info",
-								"properties": {
-									"type": {
-										"type": "integer",
-										"enum": [1],
-										"options": {
-											"hidden": true
-										}
-									},
-									"title": {
-										"type": "object",
-										"title": "Information title",
-										"options": {
-											"disable_collapse": true,
-											"disable_edit_json": true,
-											"disable_properties": true
-										},
-										"properties": {
-											"text": {
-												"type": "string",
-												"title": "Enter information title",
-												"format": "text",
-												"minLength": 1
-											}
-										}
-									},
-									"photo": {
-										"type": "object",
-										"title": "Information photo",
-										"description": "Default selected false, not yet realized",
-										"options": {
-											"disable_collapse": true,
-											"disable_edit_json": true,
-											"disable_properties": true
-										},
-										"properties": {
-											"visible": {
-												"type": "boolean",
-												"format": "checkbox",
-												"default": false
-											}
-										}
-									},
-									"value": {
-										"type": "object",
-										"title": "Information text",
-										"options": {
-											"disable_collapse": true,
-											"disable_edit_json": true,
-											"disable_properties": true
-										},
-										"properties": {
-											"text": {
-												"type": "string",
-												"title": "Enter information text",
-												"format": "textarea"
-											}
-										}
-									}
-								},
-								"required": ["type", "title", "photo", "value"],
-								"additionalProperties": false
-							}
-						]
-					}
-				}
-			}
-		}*/
-		//,startval: start_value
 	});
+	// Would change the option and call `onChange`
+	editor.setOption('show_errors', 'always');
+	// Disable not necessary fields
 	editor.getEditor('root.contractorid').disable();
 	editor.getEditor('root.id').disable();
 	editor.getEditor('root.status').disable();
 	editor.getEditor('root.changed_at').disable();
 	editor.getEditor('root.info.icon').disable();
 	
+	//editor.on('change', editorChange);
+
+	function editorChange() {
+		var errors = editor.validate();
+		if(!errors.length) {
+			$('#updateModalData').prop('disabled', false);
+		}
+	}
+
+	//editor.watch(function(){
+	//	console.log('this watched');
+	//});
+
 	// If fullname input is empty, then will be filled by name input value
 	var name = editor.getEditor('root.name');
 	editor.watch(name.path, function() {
@@ -871,8 +686,7 @@ $(document).ready(function() {
 		var icon = editor.getEditor('root.info.icon.image_url');
 		icon.setValue(fslide.getValue());
 	});
-	
-	//editor.setValue(schemajson);
+
 });
 </script>
 </body>

@@ -3,10 +3,9 @@
  * Database configuration
  */
 
-//Файл публикуется с ошибками. Следует сразу добавить нужные строки 
-//igor settings igor eY2vHmju
-define('DB_USERNAME', 'root');//MySql user login
-define('DB_PASSWORD', '');//Set password for mysql user
+//пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ 
+define('DB_USERNAME', 'igor');//MySql user login
+define('DB_PASSWORD', 'eY2vHmju');//Set password for mysql user
 define('DB_HOST', 'localhost');//You should set here your  own host name. Ususally used 'localhost'
 define('DB_NAME', 'fabricant');//date-base name used in mysql
  

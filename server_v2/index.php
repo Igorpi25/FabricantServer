@@ -214,23 +214,19 @@ function authenticate(\Slim\Route $route) {
     } else {
         // api key is missing in header
         $response["error"] = true;
-        $response["message"] = "Api key is misssing";
+        $response["message"] = "Api key is missing";
         $response["success"] = 0;
         echoResponse(400, $response);
         $app->stop();
     }
-    
-    
 }
 
 $app->post('/testapikey', 'authenticate', function() {
-            
-            $response=array();
-            $response["error"] = false;
-            $response["message"] = "Api key is actual";
-            $response["success"] = 1;
-             
-            echoResponse(200, $response);
+    $response=array();
+    $response["error"] = false;
+    $response["message"] = "Api key is actual";
+    $response["success"] = 1;
+    echoResponse(200, $response);
 });
 
 //----------------Users-----------------------------------------
@@ -685,8 +681,6 @@ $app->get('/communicator/start', 'authenticate', function () use ($app)  {
 	$websocketserver->Start();
 	
 });	
-
-
 
 $app->run();
 
