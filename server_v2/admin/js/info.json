@@ -1,0 +1,73 @@
+{
+	"title": "Info",
+	"type": "object",
+	"options": {
+		"disable_properties": true
+	},
+	"properties": {
+		"type": {
+			"type": "integer",
+			"enum": [1],
+			"options": {
+				"hidden": true
+			}
+		},
+		"title": {
+			"title": "Information title",
+			"type": "object",
+			"options": {
+				"disable_collapse": true,
+				"disable_edit_json": true,
+				"disable_properties": true
+			},
+			"properties": {
+				"text": {
+					"title": "Enter information title",
+					"type": "string",
+					"format": "text",
+					"minLength": 1,
+					"maxLength": 255
+				}
+			}
+		},
+		"photo": {
+			"title": "Information photo",
+			"description": "Default selected false, not yet realized",
+			"type": "object",
+			"options": {
+				"disable_collapse": true,
+				"disable_edit_json": true,
+				"disable_properties": true
+			},
+			"properties": {
+				"visible": {
+					"type": "boolean",
+					"format": "checkbox",
+					"default": false,
+					"readOnly": true
+				}
+			}
+		},
+		"value": {
+			"title": "Information text",
+			"type": "object",
+			"options": {
+				"disable_collapse": true,
+				"disable_edit_json": true,
+				"disable_properties": true
+			},
+			"properties": {
+				"text": {
+					"title": "Enter information text",
+					"type": "string",
+					"format": "textarea",
+					"options": {
+						"input_height": "100px"
+					}
+				}
+			}
+		}
+	},
+	"required": ["type", "title", "photo", "value"],
+	"additionalProperties": false
+}

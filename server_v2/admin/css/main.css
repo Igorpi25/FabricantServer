@@ -1,0 +1,22 @@
+.page-header {
+	margin-top: 0px;
+}
+img {
+	vertical-align: middle;
+	border: 0;
+	page-break-inside: avoid;
+	max-width: 100% !important;
+}
+tr, input[type='checkbox'] {
+	cursor: pointer;
+}
+
+.sceditor-container {
+	font-weight: normal;
+	max-width: 100%;
+}
+.sceditor-button {
+	box-sizing: content-box;
+	-webkit-box-sizing: content-box;
+	-moz-box-sizing: content-box;
+}

@@ -19,21 +19,7 @@ $user_id = NULL;
  */
 
 $app->get('/hello/:name', function ($name) {
-	//Console command to notify that group has been changed
-	/*$json_header=array();
-	$json_header["console"]="v1/index/hello";
-	$json_header["operation"]=M_CONSOLE_OPERATION_GROUP;
-	$json_header["group_operationid"]=M_GROUPOPERATION_SAVE;
-	$json_header["groupid"]=2;
-	$json_header["senderid"]=1;
-	$json=array();
-	$json["name"]="$name";
-	
-	$json_header["json"]=json_encode($json);
-	$console_response=consoleCommand($json_header);			
-
-	echo $console_response["message"];*/
-	$response["error"] = true;
+	$response["error"] = false;
 	$response["message"] = "Hello, ".$name;
 	$response["success"] = 0;
 	echoResponse(100, $response);
@@ -163,8 +149,14 @@ $app->get('/products', function() use ($app) {
 	$fdb = new DbHandlerFabricant();
 	$result = $fdb->getProductsOfContractor($contractorid);
 	$response = array();
-	$response["error"] = false;
-	$response["products"]=$result;
+	if ($result) {
+		$response["error"] = false;
+		$response["products"] = $result;
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to get products list. Please try again";
+	}
 	echoResponse(200, $response);
 });
 /**
@@ -184,8 +176,8 @@ $app->post('/products', function() use ($app) {
 	if ($productid != NULL) {
 		$response["error"] = false;
 		$response["message"] = "Product created successfully";
-		$response["id"]=$productid;
-		$response["contractorid"]=$contractorid;
+		$response["id"] = $productid;
+		$response["contractorid"] = $contractorid;
 	}
 	else {
 		$response["error"] = true;
@@ -206,7 +198,7 @@ $app->put('/products/:id', function($id) use ($app) {
 	$price = $app->request->put('price');
 	$info = $app->request->put('info');
 	$status = $app->request->put('status');
-	// creating new product
+	// updating product
 	$fdb = new DbHandlerFabricant();
 	$result = $fdb->updateProduct($id, $name, $price, $info, $status);
 	$response = array();
@@ -226,7 +218,7 @@ $app->put('/products/:id', function($id) use ($app) {
  * url /products/:id
  */
 $app->delete('/products/:id', function($id) use ($app) {
-	// creating new product
+	// deleting product
 	$fdb = new DbHandlerFabricant();
 	$result = $fdb->removeProduct($id);
 	$response = array();
@@ -241,11 +233,119 @@ $app->delete('/products/:id', function($id) use ($app) {
 	echoResponse(200, $response);
 });
 /**
- * Uploading product image
+ * Publishing contractor product (changing status)
  * method POST
- * url /product/upload:prefix
+ * url /products/publish/:id
  */
-$app->post('/products/upload/:prefix', function($prefix) use ($app) {
+$app->post('/products/publish/:id', function($id) use ($app) {
+	// updating status of product
+	$fdb = new DbHandlerFabricant();
+	$result = $fdb->publishProduct($id);
+	$response = array();
+	if ($result) {
+		$response["error"] = false;
+		$response["message"] = "Product published successfully";
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Product failed to publish. Please try again";
+	}
+	echoResponse(200, $response);
+});
+
+/**
+ * Listing all contractors
+ * method GET
+ * url /contractors
+ */
+$app->get('/contractors', function() use ($app) {
+	// listing all users
+	$db = new DbHandlerProfile();
+	$result = $db->getAllGroupsWeb();
+	$response = array();
+	if ($result) {
+		$response["error"] = false;
+		$response["contractors"] = $result;
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to get contractors list. Please try again";
+	}
+	echoResponse(200, $response);
+});
+/**
+ * Creating contractor
+ * method POST
+ * url /contractor
+ */
+$app->post('/contractors', function() use ($app) {
+	// creating new contracotor
+	$db = new DbHandlerProfile();
+	$new_id = $db->createGroupWeb("", 1, "");
+	$response = array();
+	if ($new_id != NULL) {
+		$response["error"] = false;
+		$response["message"] = "Contractor created successfully";
+		$response["id"] = $new_id;
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to create contractor. Please try again";
+	}
+	echoResponse(201, $response);
+});
+/**
+ * Updating contractor
+ * method PUT
+ * url /contractors/:id
+ */
+$app->put('/contractors/:id', function($id) use ($app) {
+	// check for required params
+	verifyRequiredParams(array('name', 'status', 'info'));
+	// reading put params
+	$name = $app->request->put('name');
+	$status = $app->request->put('status');
+	$info = $app->request->put('info');
+	// updating contractor
+	$db = new DbHandlerProfile();
+	$result = $db->updateGroupWeb($id, $name, $status, $info);
+	$response = array();
+	if ($result) {
+		$response["error"] = false;
+		$response["message"] = "Contractor updated successfully";
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Contractor failed to update. Please try again";
+	}
+	echoResponse(200, $response);
+});
+/**
+ * Deleting contractor
+ * method DELETE
+ * url /contractors/:id
+ */
+$app->delete('/contractors/:id', function($id) use ($app) {
+	// deleting product
+	$db = new DbHandlerProfile();
+	$result = $db->removeGroupWeb($id);
+	$response = array();
+	if ($result) {
+		$response["error"] = false;
+		$response["message"] = "Contractor deleted successfully";
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Contractor failed to delete. Please try again";
+	}
+	echoResponse(200, $response);
+});
+/**
+ * Uploading slides images
+ * method POST
+ * url /slides/upload/:prefix
+ */
+$app->post('/slides/upload/:prefix', function($prefix) use ($app) {
 	// array for final json respone
 	$response = array();
 	try{
@@ -266,13 +366,18 @@ $app->post('/products/upload/:prefix', function($prefix) use ($app) {
 			throw new Exception('File is not image!F');
 		}
 
-		$type = $_FILES["image"]["type"];
-		$filename = uniqid($prefix).'.'.substr($type, strrpos($type,'/')+1);
-		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/images/products/'.$filename;
+		$postfix = $_FILES["image"]["type"];
+		$filename = uniqid($prefix).'.'.substr($postfix, strrpos($postfix,'/')+1);
+		if ($prefix[0] == "c")
+			$dest = '/v2/images/contractors/'.$filename;
+		else
+			$dest = '/v2/images/products/'.$filename;
+
+		$path = $_SERVER["DOCUMENT_ROOT"].$dest;
 
 		if (move_uploaded_file($tmpFile, $path)) {
 			$response["message"] = 'File uploaded successfully!';
-			$response["url"] = $_SERVER["HTTP_HOST"].'/v2/images/products/'.$filename;
+			$response["url"] = $_SERVER["HTTP_HOST"].$dest;
 			$response["error"] = false;
 			$response["success"] = 1;
 		}
@@ -288,6 +393,72 @@ $app->post('/products/upload/:prefix', function($prefix) use ($app) {
 	}
 	echoResponse(200, $response);
 });
+/**
+ * Uploading avatars
+ * method POST
+ * url /avatar/upload/:id
+ */
+$app->post('/avatar/upload/:id', function($id) use ($app) {
+	// array for final json respone
+	$response = array();
+	try{
+		// Check if the file is missing
+		if (!isset($_FILES["image"]["name"])) {
+			throw new Exception('Not received any file!F');
+		}
+		// Check the file size
+		if($_FILES["image"]["size"] > 2*1024*1024) {
+			throw new Exception('File is too big');
+		}
+
+		$tmpFile = $_FILES["image"]["tmp_name"];
+
+		// Check if the file is really an image
+		list($width, $height) = getimagesize($tmpFile);
+		if ($width == null && $height == null) {
+			throw new Exception('File is not image!F');
+		}
+
+		$image = new abeautifulsite\SimpleImage($tmpFile);
+
+		$db = new DbHandlerProfile();
+		$value_full=createThumb($image,size_full,$_SERVER['DOCUMENT_ROOT'].path_fulls);
+		$value_avatar=createThumb($image,size_avatar,$_SERVER['DOCUMENT_ROOT'].path_avatars);
+		$value_icon=createThumb($image,size_icon,$_SERVER['DOCUMENT_ROOT'].path_icons);
+
+		if (!$db->createGroupAvatar($id,$value_full,$value_avatar,$value_icon)) {
+			unlink($_SERVER['DOCUMENT_ROOT'].path_fulls.$value_full);
+			unlink($_SERVER['DOCUMENT_ROOT'].path_avatars.$value_avatar);
+			unlink($_SERVER['DOCUMENT_ROOT'].path_icons.$value_icon);
+			throw new Exception('Failed to insert to DB');
+		}
+
+		$response["message"] = 'File uploaded successfully!';
+		$response["url"] = $_SERVER["HTTP_HOST"].'/v2/images/avatars/'.$value_avatar;
+		$response["error"] = false;
+		$response["success"] = 1;
+
+	} catch (Exception $e) {
+		// Exception occurred. Make error flag true
+		$response["error"] = true;
+		$response["message"] = $e->getMessage();
+		$response["success"] = 0;
+	}
+	echoResponse(200, $response);
+});
+
+function createThumb($image,$size,$path) {
+	$image->thumbnail($size, $size);
+	$format= $image->get_original_info()['format'];
+	$uniqid=uniqid();
+	$filename=$uniqid. '.'. $format;
+	if ($image->save($path.$filename)) {
+		return $filename;
+	}
+	else {
+		return new Exception("Can not writeImage to ".$filename);
+	}
+}
 
 $app->run();
 

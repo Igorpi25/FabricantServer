@@ -26,48 +26,39 @@ class DbHandlerFabricant extends DbHandler{
      * @param String $email User login email id
      * @param String $password User login password
      */
-    public function createProduct($contractorid, $name, $price, $info) {
-        
+	public function createProduct($contractorid, $name, $price, $info) {
+
 		// insert query
 		$stmt = $this->conn->prepare("INSERT INTO products(contractorid, name, price, info) values(?, ?, ?, ?)");
 		$stmt->bind_param("isds", $contractorid, $name, $price, $info);
 		$stmt->execute();
-		//$result = $stmt->execute();
 		$result = $this->conn->insert_id;
 		$stmt->close();
-
-        return $result;
-    }
+		return $result;
+	}
 	
 	public function updateProduct($id, $name, $price, $info, $status) {
-        
+
 		// update query
-		$stmt = $this->conn->prepare("UPDATE `products` SET `name` = ? , `price` = ? , `info` = ? , `status` = ? , `changed_at` = CURRENT_TIMESTAMP() WHERE `id` = ? ");
+		$stmt = $this->conn->prepare("UPDATE `products` SET `name`=? , `price`=? , `info`=? , `status`=? , `changed_at`=CURRENT_TIMESTAMP() WHERE `id`=?");
 		$stmt->bind_param("sdsii", $name, $price, $info, $status, $id);
-
 		$result = $stmt->execute();
-
 		$stmt->close();
-
-        return $result;
-    }
+		return $result;
+	}
 	
 	public function removeProduct($id) {
-        
 		// update query
-		$stmt = $this->conn->prepare("UPDATE `products` SET `status` = 4 , `changed_at` = CURRENT_TIMESTAMP() WHERE `id` = ? ");
+		$stmt = $this->conn->prepare("UPDATE `products` SET `status`=4 , `changed_at`=CURRENT_TIMESTAMP() WHERE `id`=?");
 		$stmt->bind_param("i", $id);
-
 		$result = $stmt->execute();
-
 		$stmt->close();
+		return $result;
+	}
 
-        return $result;
-    }
-	
 	public function getProductById($id) {
         
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.id = ?");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.id =?");
         $stmt->bind_param("i", $id);
         if ($stmt->execute()) {
         
@@ -97,7 +88,7 @@ class DbHandlerFabricant extends DbHandler{
     }
 	
 	public function getProductsOfContractor($contractorid){
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.contractorid=? AND p.status=1");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.contractorid=? AND p.status<>0");
 		$stmt->bind_param("i", $contractorid);
 		if ($stmt->execute()){
 			$stmt->store_result();
@@ -147,6 +138,15 @@ class DbHandlerFabricant extends DbHandler{
 		} else {
 			return NULL;
 		}
+	}
+
+	public function publishProduct($id) {
+		// update query
+		$stmt = $this->conn->prepare("UPDATE `products` SET `status`=2 , `changed_at`=CURRENT_TIMESTAMP() WHERE `id`=?");
+		$stmt->bind_param("i", $id);
+		$result = $stmt->execute();
+		$stmt->close();
+		return $result;
 	}
 
 //-------------------------Delta-----------------------------------------

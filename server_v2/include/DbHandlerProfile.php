@@ -899,7 +899,83 @@ class DbHandlerProfile extends DbHandler{
 		$result = $stmt->execute();
 		$stmt->close();
     }
-		
+
+	/**
+	* Get all groups from web (adminpanel)
+	*/
+	public function getAllGroupsWeb() {
+		$stmt = $this->conn->prepare("SELECT g.id, g.name, g.status, g.info, g.created_at, g.changed_at, a.filename_icon, a.filename_avatar, a.filename_full FROM groups g LEFT OUTER JOIN avatars a ON g.avatar=a.id");
+		if($stmt->execute()) {
+			$stmt->bind_result($id,$name,$status,$info,$created_at,$changed_at,$icon,$avatar,$full);
+			$result=array();
+			while($stmt->fetch()) {
+				$res=array();
+				$res["id"]=$id;
+				$res["name"]=$name;
+				$res["status"]=$status;
+				$res["info"]=$info;
+				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
+				$res["created_at"]=$timestamp_object->getTimestamp();
+				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+				$res["changed_at"] = $timestamp_object->getTimestamp();
+				$result[]=$res;
+			}
+			$stmt->close();
+			return $result;
+		}
+		else {
+			return NULL;
+		}		
+	}
+	/**
+	* Create new group from web (adminpanel)
+	* @param $name string Name of new group
+	* @param $status integer Status of group
+	* @param $info json Information of new group
+	* @return result
+	*/
+	public function createGroupWeb($name,$status,$info) {
+		$date_string=date('Y-m-d H:i:s',time());
+		//Insert to 'groups' table
+		$stmt = $this->conn->prepare("INSERT INTO groups(name,status,info,created_at) values(?,?,?,?)");
+		$stmt->bind_param("siss", $name,$status,$info,$date_string);
+		$stmt->execute();
+		$result = $this->conn->insert_id;
+		$stmt->close();
+		return $result;
+	}
+
+	/**
+	* Update group from web (adminpanel)
+	* @param $id integer Id of updated group
+	* @param $name string Name of group
+	* @param $status integer Status of group
+	* @param $info json Information of group
+	* @return result
+	*/
+	public function updateGroupWeb($id,$name,$status,$info) {
+		//Update to 'groups' table
+		$stmt = $this->conn->prepare("UPDATE `groups` SET `name`=?, `status`=?, `info`=? WHERE `id`=?");
+		$stmt->bind_param("sisi", $name,$status,$info,$id);
+		$result = $stmt->execute();
+		$stmt->close();
+		return $result;
+	}
+
+	/**
+	* Remove group from web (adminpanel)
+	* @param $id integer Id of updated group
+	* @return result
+	*/
+	public function removeGroupWeb($id) {
+		//Update to 'groups' table
+		$stmt = $this->conn->prepare("UPDATE `groups` SET `status`=4 WHERE `id`=?");
+		$stmt->bind_param("i", $id);
+		$result = $stmt->execute();
+		$stmt->close();
+		return $result;
+	}
+
 //----------------Friend Operations-----------------------
 
 	const OPERATION_ADD=0;

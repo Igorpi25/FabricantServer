@@ -1,0 +1,83 @@
+{
+	"title": "Slider",
+	"type": "object",
+	"options": {
+		"disable_properties": true
+	},
+	"properties": {
+		"type": {
+			"type": "integer",
+			"enum": [2],
+			"options": {
+				"hidden": true
+			}
+		},
+		"slides": {
+			"title": "Slides",
+			"type": "array",
+			"format": "tabs",
+			"uniqueItems": true,
+			"minItems": 1,
+			"items": {
+				"title": "Slide",
+				"type": "object",
+				"options": {
+					"disable_collapse": true,
+					"disable_edit_json": true,
+					"disable_properties": true
+				},
+				"properties": {
+					"photo": {
+						"title": "Photo url",
+						"type": "object",
+						"options": {
+							"disable_collapse": true,
+							"disable_edit_json": true,
+							"disable_properties": true
+						},
+						"properties": {
+							"image_url": {
+								"type": "string",
+								"title": "Upload photo",
+								"format": "url",
+								"media": {
+									"type": "image/*"
+								},
+								"options": {
+									"upload": true
+								},
+								"links": [
+									{
+										"href": "{{self}}",
+										"mediaType": "image/*"
+									}
+								]
+							}
+						}
+					},
+					"title": {
+						"title": "Photo description",
+						"type": "object",
+						"options": {
+							"disable_collapse": true,
+							"disable_edit_json": true,
+							"disable_properties": true
+						},
+						"properties": {
+							"text": {
+								"title": "Enter description of photo",
+								"type": "string",
+								"format": "textarea",
+								"options": {
+									"input_height": "100px"
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	},
+	"required": ["type", "slides"],
+	"additionalProperties": false
+}
