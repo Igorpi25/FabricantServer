@@ -1,10 +1,16 @@
 {
 	"type": "object",
-	"title": "Product",
+	"title": "Продукт",
 	"format": "grid",
+	"additionalProperties": true,
+	"options": {
+		"disable_collapse": true,
+		"disable_edit_json": true,
+		"disable_properties": true
+	},
 	"properties": {
 		"contractorid": {
-			"title": "Contractor ID",
+			"title": "ИД производителя",
 			"type": "number",
 			"options": {
 				"grid_columns": 3
@@ -13,7 +19,7 @@
 			"propertyOrder": 1
 		},
 		"id": {
-			"title": "Product ID",
+			"title": "ИД продукта",
 			"type": "number",
 			"options": {
 				"grid_columns": 3
@@ -22,7 +28,7 @@
 			"propertyOrder": 2
 		},
 		"name": {
-			"title": "Product name",
+			"title": "Наименование",
 			"type": "string",
 			"format": "text",
 			"options": {
@@ -33,7 +39,7 @@
 			"propertyOrder": 5
 		},
 		"status": {
-			"title": "Product status",
+			"title": "Статус",
 			"type": "number",
 			"enum": [1,2,3,4],
 			"default": 1,
@@ -44,7 +50,7 @@
 			"propertyOrder": 3
 		},
 		"price": {
-			"title": "Product price",
+			"title": "Цена",
 			"options": {
 				"grid_columns": 3
 			},
@@ -54,7 +60,7 @@
 			"propertyOrder": 6
 		},
 		"changed_at": {
-			"title": "Last changes date",
+			"title": "Изменения",
 			"type": "string",
 			"format": "datetime",
 			"options": {
@@ -64,14 +70,17 @@
 			"propertyOrder": 4
 		},
 		"info": {
-			"title": "Product info",
+			"title": "Информация",
 			"type": "object",
 			"options": {
-				"grid_columns": 12
+				"grid_columns": 12,
+				"disable_collapse": true,
+				"disable_edit_json": true,
+				"disable_properties": true
 			},
 			"properties": {
 				"name": {
-					"title": "Product name",
+					"title": "Наименование",
 					"type": "object",
 					"options": {
 						"disable_collapse": true,
@@ -81,7 +90,7 @@
 					},
 					"properties": {
 						"text": {
-							"title": "Enter the name of product",
+							"title": "Введите наименование",
 							"type": "string",
 							"format": "text",
 							"template": "{{pname}}",
@@ -93,7 +102,7 @@
 					}
 				},
 				"name_full": {
-					"title": "Product full name",
+					"title": "Полное наименование",
 					"type": "object",
 					"options": {
 						"disable_collapse": true,
@@ -102,7 +111,7 @@
 					},
 					"properties": {
 						"text": {
-							"title": "Enter the full name of product",
+							"title": "Введите полное наименование",
 							"type": "string",
 							"format": "text",
 							"maxLength": 255
@@ -110,7 +119,7 @@
 					}
 				},
 				"price": {
-					"title": "Product price",
+					"title": "Цена",
 					"type": "number",
 					"options": {
 						"hidden": true
@@ -123,7 +132,7 @@
 					"maximum": 9999999999
 				},
 				"summary": {
-					"title": "Product summary information",
+					"title": "Описание",
 					"type": "object",
 					"options": {
 						"disable_collapse": true,
@@ -132,7 +141,7 @@
 					},
 					"properties": {
 						"text": {
-							"title": "Enter summary information of product",
+							"title": "Введите описание",
 							"type": "string",
 							"format": "textarea",
 							"options": {
@@ -142,8 +151,8 @@
 					}
 				},
 				"icon": {
-					"title": "Product icon image url",
-					"description": "Frist image from slides array will be auto selected for icon",
+					"title": "Иконка",
+					"description": "Первый слайд автоматически выбирается для иконки",
 					"type": "object",
 					"options": {
 						"disable_collapse": true,
@@ -153,7 +162,7 @@
 					"properties": {
 						"image_url": {
 							"type": "string",
-							"title": "Uploaded icon image url of product",
+							"title": "Выберите изображение",
 							"format": "url",
 							"readOnly": true,
 							"media": {
@@ -170,11 +179,16 @@
 				},
 				"details": {
 					"type": "array",
-					"title": "Details",
+					"title": "Дополнительная информация",
 					"format": "tabs",
 					"minItems": 1,
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
 					"items": {
-						"title": "Detail",
+						"title": "Элемент",
 						"oneOf": [
 							{
 								"$ref": "js/slider.json"

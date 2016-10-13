@@ -1,7 +1,9 @@
 {
-	"title": "Slider",
+	"title": "Слайд",
 	"type": "object",
 	"options": {
+		"disable_collapse": true,
+		"disable_edit_json": true,
 		"disable_properties": true
 	},
 	"properties": {
@@ -13,13 +15,13 @@
 			}
 		},
 		"slides": {
-			"title": "Slides",
+			"title": "Слайды",
 			"type": "array",
 			"format": "tabs",
 			"uniqueItems": true,
 			"minItems": 1,
 			"items": {
-				"title": "Slide",
+				"title": "Слайд",
 				"type": "object",
 				"options": {
 					"disable_collapse": true,
@@ -28,7 +30,7 @@
 				},
 				"properties": {
 					"photo": {
-						"title": "Photo url",
+						"title": "Ссылка на фотографию",
 						"type": "object",
 						"options": {
 							"disable_collapse": true,
@@ -38,7 +40,7 @@
 						"properties": {
 							"image_url": {
 								"type": "string",
-								"title": "Upload photo",
+								"title": "Загружаемая фотография",
 								"format": "url",
 								"media": {
 									"type": "image/*"
@@ -56,7 +58,7 @@
 						}
 					},
 					"title": {
-						"title": "Photo description",
+						"title": "Описание",
 						"type": "object",
 						"options": {
 							"disable_collapse": true,
@@ -65,7 +67,7 @@
 						},
 						"properties": {
 							"text": {
-								"title": "Enter description of photo",
+								"title": "Введите описание",
 								"type": "string",
 								"format": "textarea",
 								"options": {

@@ -1,10 +1,16 @@
 {
-	"title": "Contractor",
+	"title": "Производитель",
 	"type": "object",
 	"format": "grid",
+	"additionalProperties": true,
+	"options": {
+		"disable_collapse": true,
+		"disable_edit_json": true,
+		"disable_properties": true
+	},
 	"properties": {
 		"id": {
-			"title": "Contractor ID",
+			"title": "ИД производителя",
 			"type": "number",
 			"options": {
 				"grid_columns": 3
@@ -13,7 +19,7 @@
 			"propertyOrder": 1
 		},
 		"name": {
-			"title": "Contractor name",
+			"title": "Наименование",
 			"type": "string",
 			"format": "text",
 			"options": {
@@ -24,7 +30,7 @@
 			"propertyOrder": 5
 		},
 		"status": {
-			"title": "Contractor status",
+			"title": "Статус",
 			"type": "number",
 			"enum": [1,2,3,4],
 			"default": 1,
@@ -35,7 +41,7 @@
 			"propertyOrder": 2
 		},
 		"created_at": {
-			"title": "Created date",
+			"title": "Дата создания",
 			"type": "string",
 			"format": "datetime",
 			"options": {
@@ -45,7 +51,7 @@
 			"propertyOrder": 3
 		},
 		"changed_at": {
-			"title": "Last changes date",
+			"title": "Изменения",
 			"type": "string",
 			"format": "datetime",
 			"options": {
@@ -55,14 +61,17 @@
 			"propertyOrder": 4
 		},
 		"info": {
-			"title": "Contractor info",
+			"title": "Информация",
 			"type": "object",
 			"options": {
-				"grid_columns": 12
+				"grid_columns": 12,
+				"disable_collapse": true,
+				"disable_edit_json": true,
+				"disable_properties": true
 			},
 			"properties": {
 				"name": {
-					"title": "Contractor name",
+					"title": "Наименование",
 					"type": "object",
 					"options": {
 						"disable_collapse": true,
@@ -72,7 +81,7 @@
 					},
 					"properties": {
 						"text": {
-							"title": "Enter the name of product",
+							"title": "Введите наименование",
 							"type": "string",
 							"format": "text",
 							"template": "{{pname}}",
@@ -84,7 +93,7 @@
 					}
 				},
 				"name_full": {
-					"title": "Contractor full name",
+					"title": "Полное наименование",
 					"type": "object",
 					"options": {
 						"disable_collapse": true,
@@ -93,7 +102,7 @@
 					},
 					"properties": {
 						"text": {
-							"title": "Enter the full name of product",
+							"title": "Введите полное наименование",
 							"type": "string",
 							"format": "text",
 							"maxLength": 255
@@ -101,7 +110,7 @@
 					}
 				},
 				"summary": {
-					"title": "Contractor summary information",
+					"title": "Описание",
 					"type": "object",
 					"options": {
 						"disable_collapse": true,
@@ -110,7 +119,7 @@
 					},
 					"properties": {
 						"text": {
-							"title": "Enter summary information of product",
+							"title": "Введите описание",
 							"type": "string",
 							"format": "textarea",
 							"options": {
@@ -120,7 +129,7 @@
 					}
 				},
 				"icon": {
-					"title": "Contractor icon image url",
+					"title": "Иконка",
 					"type": "object",
 					"options": {
 						"disable_collapse": true,
@@ -130,7 +139,7 @@
 					"properties": {
 						"image_url": {
 							"type": "string",
-							"title": "Upload icon image",
+							"title": "Выберите изображение",
 							"format": "url",
 							"media": {
 								"type": "image/*"
@@ -149,11 +158,16 @@
 				},
 				"details": {
 					"type": "array",
-					"title": "Details",
+					"title": "Дополнительная информация",
 					"format": "tabs",
 					"minItems": 1,
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
 					"items": {
-						"title": "Detail",
+						"title": "Элемент",
 						"oneOf": [
 							{
 								"$ref": "js/slider.json"

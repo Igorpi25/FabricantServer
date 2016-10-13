@@ -5,7 +5,7 @@
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
-	<title>Constractor products</title>
+	<title>Продукты</title>
 	<!-- Latest compiled and minified CSS -->
 	<link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
 	<!-- Optional theme -->
@@ -38,24 +38,25 @@ require_once dirname(__FILE__).'/../include/DbHandlerFabricant.php';
 session_start();
 include 'auth.php';
 if (!isset($_GET['id'])) {
-	header("Location: http://".$_SERVER['HTTP_HOST']."/v2/admin/contractors.php");
+	//header("Location: http://".$_SERVER['HTTP_HOST']."/v2/admin/contractors.php");
+	header("Location: http://".$_SERVER['HTTP_HOST']."/v2/admin/");
 	exit;
 }
 ?>
 <div class="container">
 	<div class="page-header">
-		<h4><a href=<?php $groupname=$db->getGroupById($_GET["id"]);echo '"http://'. $_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI'] . '">' . $groupname[0]["name"] .' products';?></a></h4>
+		<h4><a href=<?php $groupname=$db->getGroupById($_GET["id"]);echo '"http://'. $_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI'] . '">' . $groupname[0]["name"];?></a></h4>
 	</div>
 	<div class="row">
 		<div class="btn-group col-md-9">
-			<button id="newProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-plus-sign"></span> Create</button>
-			<button id="editProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-edit"></span> Edit</button>
-			<button id="publishProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-share"></span> Publish</button>
-			<button id="removeProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-minus-sign"></span> Delete</button>
+			<button id="newProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-plus-sign"></span> Создать</button>
+			<button id="editProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-edit"></span> Изменить</button>
+			<button id="publishProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-share"></span> Опубликовать</button>
+			<button id="removeProduct" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-minus-sign"></span> Удалить</button>
 		</div>
 		<div class="col-md-3 pull-right">
 			<div class="form-group has-feedback">
-				<input type="text" class="form-control" id="search" placeholder="Type to search">
+				<input type="text" class="form-control" id="search" placeholder="Поиск">
 				<span class="glyphicon glyphicon-search form-control-feedback"></span>
 			</div>
 		</div>
@@ -65,11 +66,11 @@ if (!isset($_GET['id'])) {
 		<thead>
 			<tr>
 				<th class="col-md-1"># <span style="font-size:0.75em"></span></th>
-				<th class="col-md-1" id="id">id <span style="font-size:0.75em"></span></th>
-				<th class="col-md-6" id="name">name <span style="font-size:0.75em"></span></th>
-				<th class="col-md-1" id="price">price <span style="font-size:0.75em"></span></th>
-				<th class="col-md-1" id="status">status <span style="font-size:0.75em"></span></th>
-				<th class="col-md-2" id="changed_at">changed at <span style="font-size:0.75em"></span></th>
+				<th class="col-md-1" id="id">ИД <span style="font-size:0.75em"></span></th>
+				<th class="col-md-6" id="name">Наименование <span style="font-size:0.75em"></span></th>
+				<th class="col-md-1" id="price">Цена <span style="font-size:0.75em"></span></th>
+				<th class="col-md-1" id="status">Статус <span style="font-size:0.75em"></span></th>
+				<th class="col-md-2" id="changed_at">Последнее изменение <span style="font-size:0.75em"></span></th>
 			</tr>
 		</thead>
 		<tbody>
@@ -83,15 +84,15 @@ if (!isset($_GET['id'])) {
 			<div class="modal-content">
 				<div class="modal-header">
 					<button type="button" class="close" data-dismiss="modal">&times;</button>
-					<h4 class="modal-title">Product</h4>
+					<h4 class="modal-title">Продукты</h4>
 				</div>
 				<div class="modal-body">
 					<div id="editor_holder">
 					</div>
 				</div>
 				<div class="modal-footer">
-					<button id="updateModalData" type="button" class="btn btn-success"><span class="glyphicon glyphicon-ok"></span> Save changes</button>
-					<button id="cancelModalData" type="button" class="btn btn-default" data-dismiss="modal"><span class="glyphicon glyphicon-remove"></span> Cancel</button>
+					<button id="updateModalData" type="button" class="btn btn-success"><span class="glyphicon glyphicon-ok"></span> Сохранить</button>
+					<button id="cancelModalData" type="button" class="btn btn-default" data-dismiss="modal"><span class="glyphicon glyphicon-remove"></span> Отмена</button>
 				</div>
 			</div>
 		</div>
@@ -137,7 +138,7 @@ function createProduct(contractorid) {
 			cId.setValue(response["contractorid"]);
 			var id = editor.getEditor("root.id");
 			id.setValue(response["id"]);
-			$('#updateModalData').text(' Create');
+			$('#updateModalData').text(' Создать');
 			$('#productModal').modal({backdrop: 'static'});
 		},
 		error: function(jqXhr, textStatus, errorThrown ) {
@@ -276,7 +277,7 @@ function editorChange() {
 // Showing modal windows
 function editModal(data) {
 	editor.setValue(data);
-	$('#updateModalData').text(' Save changes');
+	$('#updateModalData').text(' Сохранить');
 	$('#productModal').modal({backdrop: 'static'});
 }
 
@@ -284,7 +285,7 @@ $(document).ready(function() {
 	// Getting products list
 	getProducts(contructorid);
 	// Adding to navbar menu contractors
-	$('.container-fluid').append('<ul class="nav navbar-nav"><li><a href="http://igorserver.ru/v2/admin/contractors.php">Contractors</a></li></ul>');
+	/*$('.container-fluid').append('<ul class="nav navbar-nav"><li><a href="http://igorserver.ru/v2/admin/contractors.php">Contractors</a></li></ul>');*/
 	// Searching row
 	$('#ptable').filtertable();
 	// Sorting table on table head click

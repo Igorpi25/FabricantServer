@@ -1,7 +1,8 @@
 {
-	"title": "Info",
+	"title": "Информация",
 	"type": "object",
 	"options": {
+		"disable_edit_json": true,
 		"disable_properties": true
 	},
 	"properties": {
@@ -13,7 +14,7 @@
 			}
 		},
 		"title": {
-			"title": "Information title",
+			"title": "Заголовок",
 			"type": "object",
 			"options": {
 				"disable_collapse": true,
@@ -22,7 +23,7 @@
 			},
 			"properties": {
 				"text": {
-					"title": "Enter information title",
+					"title": "Введите заголовок",
 					"type": "string",
 					"format": "text",
 					"minLength": 1,
@@ -31,8 +32,8 @@
 			}
 		},
 		"photo": {
-			"title": "Information photo",
-			"description": "Default selected false, not yet realized",
+			"title": "Фотография",
+			"description": "В данный момент не доступно",
 			"type": "object",
 			"options": {
 				"disable_collapse": true,
@@ -49,7 +50,7 @@
 			}
 		},
 		"value": {
-			"title": "Information text",
+			"title": "Текст",
 			"type": "object",
 			"options": {
 				"disable_collapse": true,
@@ -58,7 +59,7 @@
 			},
 			"properties": {
 				"text": {
-					"title": "Enter information text",
+					"title": "Введите текст",
 					"type": "string",
 					"format": "textarea",
 					"options": {

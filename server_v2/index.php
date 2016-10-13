@@ -2,6 +2,7 @@
 
 require_once dirname(__FILE__).'/include/SimpleImage.php'; 
 require_once dirname(__FILE__).'/include/DbHandlerProfile.php';
+require_once dirname(__FILE__).'/include/DbHandlerFabricant.php';
 require_once dirname(__FILE__).'/include/PassHash.php';
 
 require_once dirname(__FILE__).'/libs/Slim/Slim.php';
@@ -585,6 +586,104 @@ $app->post('/search_contact', 'authenticate', function () use ($app)  {
         
 	        $response['error'] = true;
 	        $response['message'] = $e->getMessage()." value=".$value;
+	     	$response['success'] = 0;
+	}
+	
+	echoResponse(200, $response);
+
+});	
+
+//-------------Fabricant-----------------------
+
+/**
+ * Create an order and send the created order to customer through communicator
+ * method POST
+ * url - /create_order
+ * response - orderid
+ */
+$app->post('/create_order', 'authenticate', function () use ($app)  {
+	
+	// check for required params
+    verifyRequiredParams(array('order'));
+	
+	$response = array();
+	
+	try{	
+			$db_profile = new DbHandlerProfile();
+			$db_fabricant = new DbHandlerFabricant();
+			
+	        global $user_id;	
+			
+			// reading post params
+			$json_order = $app->request->post('order');
+			
+			
+			$order=json_decode($json_order,true);
+			$items=$order["items"];
+			$contractorid=$order["contractorid"];
+			
+			$phone=$order["phone"];
+			$address=$order["address"];
+						
+			$basket=array();
+			$basket_price=0;
+			
+			//Заполнение корзины и добавление имя продукта, также цена-итого 
+			foreach($items as $productid=>$count){
+					$product=$db_fabricant->getProductById($productid);
+					
+					$item["productid"]=$productid;
+					$item["name"]=$product["name"];
+					$item["price"]=$product["price"];
+					$item["count"]=$count;
+					$item["amount"]=$product["price"]*$count;
+					
+					$basket_price+=$item["amount"];
+					
+					$basket[]=$item;				
+			}
+			
+			$info=array();
+			$info["contractorid"]=$contractorid;
+			
+			//Dummy customer
+			$customerid=1;
+			$info["customerid"]=$customerid;
+			
+			$info["phone"]=$phone;
+			$info["address"]=$address;
+			
+			//Add basket to info
+			$info["basket"]=$basket;
+			
+			//Name of contractor
+			$group_contractor=$db_profile->getGroupById($contractorid)[0];
+			$info["contractor_name"]=$group_contractor["name"];
+			
+			//Name of customer (dummy)
+			$info["customer_name"]="ИП Иванов П.В.";
+			
+			//Delivery price (dummy)
+			$delivery_price=200;
+			$info["delivery_price"]=$delivery_price;
+			
+			//Basket price (dummy)
+			$info["basket_price"]=$basket_price;
+						
+			//Total price: delivery + basket_total
+			$total_price=$basket_price+$delivery_price;
+			$info["total_price"]=$total_price;
+			
+			$orderid=$db_fabricant->createOrder($contractorid,$customerid,$info);
+			
+			$response['orderid'] = $orderid;
+	        $response['error'] = false;
+	        $response['success'] = 1;
+        
+		} catch (Exception $e) {
+        
+	        $response['error'] = true;
+	        $response['message'] = $e->getMessage();
 	     	$response['success'] = 0;
 	}
 	

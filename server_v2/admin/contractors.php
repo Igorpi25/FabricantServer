@@ -5,7 +5,7 @@
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
-	<title>Constractor products</title>
+	<title>Производители</title>
 	<!-- Latest compiled and minified CSS -->
 	<link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
 	<!-- Optional theme -->
@@ -44,13 +44,13 @@ include 'auth.php';
 	</div>
 	<div class="row">
     	<div class="btn-group col-md-9">
-			<button id="newContractor" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-plus-sign"></span> Create</button>
-			<button id="editContractor" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-edit"></span> Edit</button>
-            <button id="removeContractor" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-minus-sign"></span> Delete</button>
+			<button id="newContractor" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-plus-sign"></span> Создать</button>
+			<button id="editContractor" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-edit"></span> Изменить</button>
+            <button id="removeContractor" type="button" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-minus-sign"></span> Удалить</button>
  		</div>
  		<div class="col-md-3 pull-right">
  			<div class="form-group has-feedback">
- 				<input type="text" class="form-control" id="search" placeholder="Type to search">
+ 				<input type="text" class="form-control" id="search" placeholder="Поиск">
  				<span class="glyphicon glyphicon-search form-control-feedback"></span>
  			</div>
  		</div>
@@ -60,13 +60,13 @@ include 'auth.php';
 		<thead>
 			<tr>
 				<th class="col-md-1">#</th>
-				<th class="col-md-1" id="id">id <span style="font-size:0.75em"></span></th>
-				<th class="col-md-4" id="name">name <span style="font-size:0.75em"></span></th>
-				<th class="col-md-1" id="status">status <span style="font-size:0.75em"></span></th>
-				<th class="col-md-2" id="changed_at">changed at <span style="font-size:0.75em"></span></th>
-				<th class="col-md-1">details</th>
-				<th class="col-md-1">users</th>
-				<th class="col-md-1">products</th>
+				<th class="col-md-1" id="id">ИД <span style="font-size:0.75em"></span></th>
+				<th class="col-md-4" id="name">Наименование <span style="font-size:0.75em"></span></th>
+				<th class="col-md-1" id="status">Статус <span style="font-size:0.75em"></span></th>
+				<th class="col-md-2" id="changed_at">Последнее изменение <span style="font-size:0.75em"></span></th>
+				<th class="col-md-1">Детали</th>
+				<th class="col-md-1">Пользователи</th>
+				<th class="col-md-1">Продукты</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -82,15 +82,15 @@ include 'auth.php';
 		<div class="modal-content">
 			<div class="modal-header">
 				<button type="button" class="close" data-dismiss="modal">&times;</button>
-				<h4 class="modal-title">Contractor</h4>
+				<h4 class="modal-title">Производители</h4>
 			</div>
 			<div class="modal-body">
 				<div id="editor_holder">
 				</div>
 			</div>
 			<div class="modal-footer">
-				<button id="updateModalData" type="button" class="btn btn-success updatemodaldata"><span class="glyphicon glyphicon-ok"></span> Save changes</button>
-				<button id="cancelModalData" type="button" class="btn btn-default" data-dismiss="modal"><span class="glyphicon glyphicon-remove"></span> Cancel</button>
+				<button id="updateModalData" type="button" class="btn btn-success updatemodaldata"><span class="glyphicon glyphicon-ok"></span> Сохранить</button>
+				<button id="cancelModalData" type="button" class="btn btn-default" data-dismiss="modal"><span class="glyphicon glyphicon-remove"></span> Отмена</button>
 			</div>
 		</div>
 	</div>
@@ -102,15 +102,15 @@ include 'auth.php';
 		<div class="modal-content">
 			<div class="modal-header">
 				<button type="button" class="close" data-dismiss="modal">&times;</button>
-				<h4 class="modal-title">Contractor users</h4>
+				<h4 class="modal-title">Пользователи производителя</h4>
 			</div>
 			<div class="modal-body">
 				<div id="users_editor_holder">
 				</div>
 			</div>
 			<div class="modal-footer">
-				<button id="updateUsersModalData" type="button" class="btn btn-success updatemodaldata"><span class="glyphicon glyphicon-ok"></span> Save changes</button>
-				<button id="cancelUsersModalData" type="button" class="btn btn-default" data-dismiss="modal"><span class="glyphicon glyphicon-remove"></span> Cancel</button>
+				<button id="updateUsersModalData" type="button" class="btn btn-success updatemodaldata"><span class="glyphicon glyphicon-ok"></span> Сохранить</button>
+				<button id="cancelUsersModalData" type="button" class="btn btn-default" data-dismiss="modal"><span class="glyphicon glyphicon-remove"></span> Отмена</button>
 			</div>
 		</div>
 	</div>
@@ -122,15 +122,15 @@ include 'auth.php';
 		<div class="modal-content">
 			<div class="modal-header">
 				<button type="button" class="close" data-dismiss="modal">&times;</button>
-				<h4 class="modal-title">Contractor details</h4>
+				<h4 class="modal-title">Детали производителя</h4>
 			</div>
 			<div class="modal-body">
 				<div id="details_editor_holder">
 				</div>
 			</div>
 			<div class="modal-footer">
-				<button id="updateDetailsModalData" type="button" class="btn btn-success updatemodaldata"><span class="glyphicon glyphicon-ok"></span> Save changes</button>
-				<button id="cancelDetailsModalData" type="button" class="btn btn-default" data-dismiss="modal"><span class="glyphicon glyphicon-remove"></span> Cancel</button>
+				<button id="updateDetailsModalData" type="button" class="btn btn-success updatemodaldata"><span class="glyphicon glyphicon-ok"></span> Сохранить</button>
+				<button id="cancelDetailsModalData" type="button" class="btn btn-default" data-dismiss="modal"><span class="glyphicon glyphicon-remove"></span> Отмена</button>
 			</div>
 		</div>
 	</div>
@@ -240,7 +240,7 @@ function createContractor() {
 				editor.setValue(starting_value);
 				var id = editor.getEditor("root.id");
 				id.setValue(response["id"]);
-				$('#updateModalData').text(' Create');
+				$('#updateModalData').text(' Создать');
 				$('#contractorModal').modal({backdrop: 'static'});
 			}
 		},
@@ -292,7 +292,7 @@ function editorChange() {
 // Showing modal windows
 function editModal(data) {
 	editor.setValue(data);
-	$('#updateModalData').text(' Save changes');
+	$('#updateModalData').text(' Сохранить');
 	$('#contractorModal').modal({backdrop: 'static'});
 }
 

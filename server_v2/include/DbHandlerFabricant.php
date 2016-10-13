@@ -10,15 +10,21 @@ require_once dirname(__FILE__).'/DbHandler.php';
  
 class DbHandlerFabricant extends DbHandler{
 
-	const STATUS_CREATED=0;
-	const STATUS_PUBLISHED=1;
+	const STATUS_CREATED=1;
+	const STATUS_PUBLISHED=2;
 	const STATUS_DELETED=4;
+	
+	const STATUS_ORDER_PROCESSING=1;
+	const STATUS_ORDER_CONFIRMED=2;
+	const STATUS_ORDER_ONWAY=3;
+	const STATUS_ORDER_CANCELED=4;
+	const STATUS_ORDER_DELIVERED=8;
  
     function __construct() {
         parent::__construct();
     }
 	
-/* ------------- `products` ------------------ */
+	/*------------- `products` ------------------ */
  
     /**
      * Creating new user
@@ -71,9 +77,9 @@ class DbHandlerFabricant extends DbHandler{
             
 	            $res= array();
 	            $res["id"] = $id;
-				//$res["contractorid"] = $contractorid;
+				$res["contractorid"] = $contractorid;
 	            $res["name"] = $name;
-	            //$res["status"] = $status;
+	            $res["status"] = $status;
 				$res["price"] = $price;
 				$res["info"] = $info;
 
@@ -149,6 +155,24 @@ class DbHandlerFabricant extends DbHandler{
 		return $result;
 	}
 
+	//-----------------Order--------------------
+	
+	public function createOrder($contractorid,$customerid,$info){
+		
+		$json_info=json_encode($info);
+		
+		//status is created
+		$status=self::STATUS_ORDER_PROCESSING;
+		
+		// insert query
+		$stmt = $this->conn->prepare("INSERT INTO orders(contractorid, customerid, status, info, created_at) values(?, ?, ?, ?, NOW() )");
+		$stmt->bind_param("iiis", $contractorid, $customerid, $status, $json_info);
+		$stmt->execute();
+		$orderid = $this->conn->insert_id;
+		$stmt->close();
+		
+		return $orderid;
+	}
 //-------------------------Delta-----------------------------------------
 		
     public function getProductsDelta($timestamp) {

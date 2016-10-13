@@ -617,7 +617,7 @@ class DbHandlerProfile extends DbHandler{
     public function getGroupById($groupid) {
         
             $stmt = $this->conn->prepare("
-				SELECT g.id, g.name, g.status, g.created_at, g.changed_at, a.filename_icon, a.filename_avatar, a.filename_full  
+				SELECT g.id, g.name, g.status, g.info, g.created_at, g.changed_at, a.filename_icon, a.filename_avatar, a.filename_full  
 				FROM groups g 
 				LEFT OUTER JOIN avatars a ON g.avatar = a.id 
 				WHERE ( g.id  = ? ) ");
@@ -625,7 +625,7 @@ class DbHandlerProfile extends DbHandler{
              
 			if($stmt->execute()){
 			
-				$stmt->bind_result($id,$name,$status,$created_at,$changed_at,$icon,$avatar,$full);
+				$stmt->bind_result($id,$name,$status,$info,$created_at,$changed_at,$icon,$avatar,$full);
 				
 				$result=array();
 				
@@ -635,6 +635,7 @@ class DbHandlerProfile extends DbHandler{
 					$res["id"]=$id;
 					$res["name"]=$name;
 					$res["status"]=$status;
+					$res["info"]=$info;
 					
 					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 					$res["created_at"]=$timestamp_object->getTimestamp();
@@ -668,14 +669,14 @@ class DbHandlerProfile extends DbHandler{
     public function getAllGroups() {
         
             $stmt = $this->conn->prepare("
-				SELECT g.id, g.name, g.status, g.created_at, g.changed_at, a.filename_icon, a.filename_avatar, a.filename_full  
+				SELECT g.id, g.name, g.status, g.info, g.created_at, g.changed_at, a.filename_icon, a.filename_avatar, a.filename_full  
 				FROM groups g 
 				LEFT OUTER JOIN avatars a ON g.avatar = a.id 
 			");
              
 			if($stmt->execute()){
 			
-				$stmt->bind_result($id,$name,$status,$created_at,$changed_at,$icon,$avatar,$full);
+				$stmt->bind_result($id,$name,$status,$info,$created_at,$changed_at,$icon,$avatar,$full);
 				
 				$result=array();
 				
@@ -685,6 +686,7 @@ class DbHandlerProfile extends DbHandler{
 					$res["id"]=$id;
 					$res["name"]=$name;
 					$res["status"]=$status;
+					$res["info"]=$info;
 					
 					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 					$res["created_at"]=$timestamp_object->getTimestamp();
@@ -900,6 +902,8 @@ class DbHandlerProfile extends DbHandler{
 		$stmt->close();
     }
 
+//---------------------Fabricant----------------------------
+	
 	/**
 	* Get all groups from web (adminpanel)
 	*/
@@ -927,6 +931,7 @@ class DbHandlerProfile extends DbHandler{
 			return NULL;
 		}		
 	}
+	
 	/**
 	* Create new group from web (adminpanel)
 	* @param $name string Name of new group
@@ -1270,7 +1275,7 @@ class DbHandlerProfile extends DbHandler{
     public function getGroupsDelta($userid,$timestamp) {
         
             $stmt = $this->conn->prepare("
-				SELECT g.id, g.name, g.status, g.created_at, g.changed_at, a.filename_icon, a.filename_avatar, a.filename_full  
+				SELECT g.id, g.name, g.status, g.info, g.created_at, g.changed_at, a.filename_icon, a.filename_avatar, a.filename_full  
 				FROM group_users u 
 				LEFT OUTER JOIN groups g ON u.groupid = g.id 
 				LEFT OUTER JOIN avatars a ON g.avatar = a.id  
@@ -1281,7 +1286,7 @@ class DbHandlerProfile extends DbHandler{
              
 			if($stmt->execute()){
 			
-				$stmt->bind_result($id,$name,$status,$created_at,$changed_at,$icon,$avatar,$full);
+				$stmt->bind_result($id,$name,$status,$info,$created_at,$changed_at,$icon,$avatar,$full);
 				
 				$result=array();
 				
@@ -1291,6 +1296,7 @@ class DbHandlerProfile extends DbHandler{
 					$res["id"]=$id;
 					$res["name"]=$name;
 					$res["status"]=$status;
+					$res["info"]=$info;
 					
 					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 					$res["created_at"]=$timestamp_object->getTimestamp();
