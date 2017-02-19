@@ -5,7 +5,6 @@
 	"additionalProperties": true,
 	"options": {
 		"disable_collapse": true,
-		"disable_edit_json": true,
 		"disable_properties": true
 	},
 	"properties": {
@@ -28,6 +27,26 @@
 			"minLength": 2,
 			"maxLength": 255,
 			"propertyOrder": 5
+		},
+		"address": {
+			"title": "Адрес",
+			"type": "string",
+			"format": "text",
+			"options": {
+				"grid_columns": 12
+			},
+			"maxLength": 255,
+			"propertyOrder": 6
+		},
+		"phone": {
+			"title": "Телефон",
+			"type": "string",
+			"format": "text",
+			"options": {
+				"grid_columns": 12
+			},
+			"maxLength": 255,
+			"propertyOrder": 7
 		},
 		"status": {
 			"title": "Статус",
@@ -65,9 +84,7 @@
 			"type": "object",
 			"options": {
 				"grid_columns": 12,
-				"disable_collapse": true,
-				"disable_edit_json": true,
-				"disable_properties": true
+				"disable_collapse": true
 			},
 			"properties": {
 				"name": {
@@ -174,12 +191,15 @@
 							},
 							{
 								"$ref": "js/info.json"
+							},
+							{
+								"$ref": "js/condition.json"
 							}
 						]
 					}
 				}
 			},
-			"propertyOrder": 6
+			"propertyOrder": 8
 		}
 	},
 	"required": ["id", "status", "created_at", "changed_at", "name"]

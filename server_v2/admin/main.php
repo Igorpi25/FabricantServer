@@ -38,7 +38,7 @@ include 'auth.php';
 	// if user in admin group
 	$res = $db->getUserId($_SESSION['apiKey']);
 	if ($db->isUserInGroup(41, $res["id"])) {
-	echo '<div class="container"><h2>Главная страница</h2>';
+		echo '<div class="container"><h2>Главная страница</h2>';
 		echo '<br><a href="http://igorserver.ru/v2/admin/contractors.php">Поставщики</a>';
     	echo '<br><a href="http://igorserver.ru/v2/admin/customers.php">Заказчики</a>';
     	echo '<br><a href="http://igorserver.ru/v2/admin/customers.php">Groups</a>';

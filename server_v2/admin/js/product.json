@@ -1,16 +1,15 @@
 {
-	"type": "object",
 	"title": "Продукт",
+	"type": "object",
 	"format": "grid",
 	"additionalProperties": true,
 	"options": {
 		"disable_collapse": true,
-		"disable_edit_json": true,
 		"disable_properties": true
 	},
 	"properties": {
-		"contractorid": {
-			"title": "ИД производителя",
+		"id": {
+			"title": "ИД продукта",
 			"type": "number",
 			"options": {
 				"grid_columns": 3
@@ -18,8 +17,8 @@
 			"readOnly": true,
 			"propertyOrder": 1
 		},
-		"id": {
-			"title": "ИД продукта",
+		"contractorid": {
+			"title": "ИД производител",
 			"type": "number",
 			"options": {
 				"grid_columns": 3
@@ -32,11 +31,21 @@
 			"type": "string",
 			"format": "text",
 			"options": {
-				"grid_columns": 9
+				"grid_columns": 10
 			},
 			"minLength": 2,
 			"maxLength": 255,
 			"propertyOrder": 5
+		},
+		"price": {
+			"title": "Цена",
+			"type": "number",
+			"options": {
+				"grid_columns": 2
+			},
+			"minimum": 0,
+			"maximum": 9999999999,
+			"propertyOrder": 6
 		},
 		"status": {
 			"title": "Статус",
@@ -48,16 +57,6 @@
 			},
 			"readOnly": true,
 			"propertyOrder": 3
-		},
-		"price": {
-			"title": "Цена",
-			"options": {
-				"grid_columns": 3
-			},
-			"type": "number",
-			"minimum": 0,
-			"maximum": 9999999999,
-			"propertyOrder": 6
 		},
 		"changed_at": {
 			"title": "Изменения",
@@ -74,9 +73,7 @@
 			"type": "object",
 			"options": {
 				"grid_columns": 12,
-				"disable_collapse": true,
-				"disable_edit_json": true,
-				"disable_properties": true
+				"disable_collapse": true
 			},
 			"properties": {
 				"name": {
@@ -119,9 +116,10 @@
 					}
 				},
 				"price": {
-					"title": "Цена",
+					"title": "Product price",
 					"type": "number",
 					"options": {
+						"grid_columns": 12,
 						"hidden": true
 					},
 					"template": "{{pprice}}",
@@ -129,7 +127,7 @@
 						"pprice": "root.price"
 					},
 					"minimum": 0,
-					"maximum": 9999999999
+					"maximum": 99999
 				},
 				"summary": {
 					"title": "Описание",
@@ -152,7 +150,6 @@
 				},
 				"icon": {
 					"title": "Иконка",
-					"description": "Первый слайд автоматически выбирается для иконки",
 					"type": "object",
 					"options": {
 						"disable_collapse": true,
@@ -162,11 +159,13 @@
 					"properties": {
 						"image_url": {
 							"type": "string",
-							"title": "Выберите изображение",
+							"title": "",
 							"format": "url",
-							"readOnly": true,
 							"media": {
 								"type": "image/*"
+							},
+							"options": {
+								"upload": false
 							},
 							"links": [
 								{
@@ -195,6 +194,9 @@
 							},
 							{
 								"$ref": "js/info.json"
+							},
+							{
+								"$ref": "js/condition.json"
 							}
 						]
 					}
@@ -203,5 +205,5 @@
 			"propertyOrder": 7
 		}
 	},
-	"required": ["contractorid", "id", "status", "changed_at", "name"]
+	"required": ["id", "contractorid", "status", "changed_at", "name"]
 }

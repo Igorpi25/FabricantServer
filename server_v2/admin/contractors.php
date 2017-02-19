@@ -40,7 +40,7 @@ include 'auth.php';
 ?>
 <div class="container">
 	<div class="page-header">
-		<h4><a href="http://igorserver.ru/v2/admin/contractors.php">Contractors</a></h4>
+		<h4><a href="http://igorserver.ru/v2/admin/contractors.php">Производители</a></h4>
 	</div>
 	<div class="row">
     	<div class="btn-group col-md-9">
@@ -143,7 +143,7 @@ include 'auth.php';
 // This is the starting value for the editor
 // We will use this to seed the initial editor
 // and to provide a "Create" button.
-var starting_value = {"id":0,"name":"","status":1,"created_at":"","changed_at":"","info":{"name":{"text":""},"name_full":{"text":""},"summary":{"text":""},"icon":{"image_url":""},"details":[{"type":2,"slides":[{"photo":{"image_url":""},"title":{"text":""}}]}]}};
+var starting_value = {"id":0,"name":"","address":"","phone":"","status":1,"created_at":"","changed_at":"","info":{"name":{"text":""},"name_full":{"text":""},"summary":{"text":""},"icon":{"image_url":""},"details":[{"type":2,"slides":[{"photo":{"image_url":""},"title":{"text":""}}]}]}};
 // Specify json-editor upload handler
 JSONEditor.defaults.options.upload = function(type, file, cbs) {
 	cbs.updateProgress();
@@ -250,11 +250,11 @@ function createContractor() {
 	});
 }
 
-function updateContractor(id, name, status, info) {
+function updateContractor(id, name, address, phone, status, info) {
 	$.ajax({
 		method: "PUT",
 		url: "http://igorserver.ru/v2/admin/contractors/" + id,
-		data: {name: name, status: status, info: info},
+		data: {name: name, address: address, phone: phone, status: status, info: info},
 		cache: false,
 		dataType: "json",
 		success: function(response) {
@@ -302,7 +302,7 @@ function showUsers(id) {
 };
 
 function showDetails(id) {
-	$('#contractorUsersModal').modal();
+	$('#contractorDetailsModal').modal();
 	console.log(id);
 };
 
@@ -335,7 +335,7 @@ $(document).ready(function() {
 	// 'Update' button clicked
 	$('#updateModalData').on('click', function() {
 		var value = editor.getValue();
-		updateContractor(value.id, value.name, value.status, JSON.stringify(value.info));
+		updateContractor(value.id, value.name, value.address, value.phone, value.status, JSON.stringify(value.info));
 		$('#contractorModal').modal('hide');
 	});
 

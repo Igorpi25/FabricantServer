@@ -1,0 +1,206 @@
+{
+	"title": "Заказчик",
+	"type": "object",
+	"format": "grid",
+	"additionalProperties": true,
+	"options": {
+		"disable_collapse": true,
+		"disable_properties": true
+	},
+	"properties": {
+		"id": {
+			"title": "ИД заказчика",
+			"type": "number",
+			"options": {
+				"grid_columns": 3
+			},
+			"readOnly": true,
+			"propertyOrder": 1
+		},
+		"name": {
+			"title": "Наименование",
+			"type": "string",
+			"format": "text",
+			"options": {
+				"grid_columns": 12
+			},
+			"minLength": 2,
+			"maxLength": 255,
+			"propertyOrder": 5
+		},
+		"address": {
+			"title": "Адрес",
+			"type": "string",
+			"format": "text",
+			"options": {
+				"grid_columns": 12
+			},
+			"maxLength": 255,
+			"propertyOrder": 6
+		},
+		"phone": {
+			"title": "Телефон",
+			"type": "string",
+			"format": "text",
+			"options": {
+				"grid_columns": 12
+			},
+			"maxLength": 255,
+			"propertyOrder": 7
+		},
+		"status": {
+			"title": "Статус",
+			"type": "number",
+			"enum": [1,2,3,4],
+			"default": 1,
+			"options": {
+				"grid_columns": 3
+			},
+			"readOnly": true,
+			"propertyOrder": 2
+		},
+		"created_at": {
+			"title": "Дата создания",
+			"type": "string",
+			"format": "datetime",
+			"options": {
+				"grid_columns": 3
+			},
+			"readOnly": true,
+			"propertyOrder": 3
+		},
+		"changed_at": {
+			"title": "Изменения",
+			"type": "string",
+			"format": "datetime",
+			"options": {
+				"grid_columns": 3
+			},
+			"readOnly": true,
+			"propertyOrder": 4
+		},
+		"info": {
+			"title": "Информация",
+			"type": "object",
+			"options": {
+				"grid_columns": 12,
+				"disable_collapse": true
+			},
+			"properties": {
+				"name": {
+					"title": "Наименование",
+					"type": "object",
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true,
+						"hidden": true
+					},
+					"properties": {
+						"text": {
+							"title": "Введите наименование",
+							"type": "string",
+							"format": "text",
+							"template": "{{pname}}",
+							"watch": {
+								"pname": "root.name"
+							},
+							"maxLength": 255
+						}
+					}
+				},
+				"name_full": {
+					"title": "Полное наименование",
+					"type": "object",
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
+					"properties": {
+						"text": {
+							"title": "Введите полное наименование",
+							"type": "string",
+							"format": "text",
+							"maxLength": 255
+						}
+					}
+				},
+				"summary": {
+					"title": "Описание",
+					"type": "object",
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
+					"properties": {
+						"text": {
+							"title": "Введите описание",
+							"type": "string",
+							"format": "textarea",
+							"options": {
+								"input_height": "100px"
+							}
+						}
+					}
+				},
+				"icon": {
+					"title": "Иконка",
+					"type": "object",
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
+					"properties": {
+						"image_url": {
+							"type": "string",
+							"title": "Выберите изображение",
+							"format": "url",
+							"media": {
+								"type": "image/*"
+							},
+							"options": {
+								"upload": true
+							},
+							"links": [
+								{
+									"href": "{{self}}",
+									"mediaType": "image/*"
+								}
+							]
+						}
+					}
+				},
+				"details": {
+					"type": "array",
+					"title": "Дополнительная информация",
+					"format": "tabs",
+					"minItems": 1,
+					"options": {
+						"disable_collapse": true,
+						"disable_edit_json": true,
+						"disable_properties": true
+					},
+					"items": {
+						"title": "Элемент",
+						"oneOf": [
+							{
+								"$ref": "js/slider.json"
+							},
+							{
+								"$ref": "js/info.json"
+							},
+							{
+								"$ref": "js/condition.json"
+							}
+						]
+					}
+				}
+			},
+			"propertyOrder": 8
+		}
+	},
+	"required": ["id", "status", "created_at", "changed_at", "name"]
+}

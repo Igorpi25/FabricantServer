@@ -56,6 +56,7 @@ define("GROUPSTATUS_LEAVE", 5);
 define("GROUPSTATUS_REMOVED", 6);
 define("GROUPSTATUS_NOT_IN_GROUP", 7);
 
+//Это на самом деле типы, надо потом исправить
 define("GROUP_STATUS_DEFAULT", 0);
 define("GROUP_STATUS_CONTRACTOR", 1);
 define("GROUP_STATUS_CUSTOMER", 2);
@@ -68,18 +69,40 @@ define("OUTGOING_ORDERS_DELTA", 2);
 
 define("INCOMING_CHECK_CONNECTION", 0);
 
+define("ORDEROPERATION_CREATE", 0);
+define("ORDEROPERATION_UPDATE", 1);
+define("ORDEROPERATION_ACCEPT", 2);
+define("ORDEROPERATION_REMOVE", 3);
+define("ORDEROPERATION_TRANSFER", 4);
+define("ORDEROPERATION_MAKE_PAID", 5);
+
+define("SALE_OPERATION_CREATE", 0);
+define("SALE_OPERATION_REMOVE", 1);
+define("SALE_OPERATION_UPDATE", 2);
+define("SALE_OPERATION_ADD_TO_CUSTOMER", 3);
+define("SALE_OPERATION_REMOVE_FROM_CUSTOMER", 4);
+
+define("SALE_TYPE_SALE", 4);
+define("SALE_TYPE_DISCOUNT", 5);
+define("SALE_TYPE_INSTALLMENT", 6);
+
 
 //-------------------Console-----------------------------------------
 
 define("CONSOLE_OPERATION_USER_CHANGED", 0);
 define("CONSOLE_OPERATION_GROUP", 1);
 define("CONSOLE_OPERATION_CHECK_SERVER", 2);
+define("CONSOLE_OPERATION_ORDER", 3);
+define("CONSOLE_OPERATION_SALE", 4);
+define("CONSOLE_OPERATION_GROUP_CHANGED", 5);
+define("CONSOLE_OPERATION_PRODUCT_CHANGED", 6);
 
 
 class WebsocketServer {
 
 public $map_userid_connect=array();//HashMap key : userid, value: connect
 public $map_connectid_userid=array();//HashMap key : connectid, value: userid ($connectid=getIdByConnect($connect))
+public $map_connectid_framecount=array();//HashMap key : connectid, sent frames count
 public $connects=array();
 
 public $recievers=array();
@@ -220,6 +243,96 @@ public function Stop(){
      
 //--------------------Функции протокола Fabricant ---------------------
 
+protected function outgoingOrder($connect,$order){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_FABRICANT;
+	$json["type"]=OUTGOING_ORDERS_DELTA;
+    $json["orders"]= array();
+	$json["orders"][]=$order;
+	
+	$this->sendFrame($connect, $json);		
+}
+
+protected function outgoingOrdersDelta($connect,$timestamp){
+	
+	$userid=$this->getUserIdByConnect($connect);		
+	$groups=$this->db_profile->getGroupsOfUser($userid);
+	
+	foreach($groups as $group){
+		
+		if( ($group["type"]==0) && (($group["status_in_group"]==1)||($group["status_in_group"]==2)) ){			
+			$orders=$this->db_fabricant->getOrdersDeltaOfContractor($group["id"],$timestamp);	
+		}else if($group["type"]==1){			
+			$orders=$this->db_fabricant->getOrdersDeltaOfCustomer($group["id"],$timestamp);			
+		}
+		
+		if(count($orders)>0){
+			$json = array();
+			$json["transport"]=TRANSPORT_FABRICANT;
+			$json["type"]=OUTGOING_ORDERS_DELTA;
+			$json["orders"]=$orders;
+			
+			$this->sendFrame($connect, $json);      
+		}
+	}
+	   
+}
+
+protected function outgoingNotifyOrderToGroup($order,$groupid){
+	
+	//Get users list of group
+    $users = $this->db_profile->getUsersInGroup($groupid);
+ 		
+	$this->log("<<outgoingNotifyOrderToGroup orderid=".$order["id"]." groupid=".$groupid." :");
+	
+	foreach($users as $user) {
+		$user_id=$user["userid"];
+		//If user connected then notify him
+		if( array_key_exists(strval($user_id), $this->map_userid_connect) ){
+			$connect=$this->getConnectByUserId($user_id);
+			
+			$this->outgoingOrder($connect,$order);
+		}
+	
+	}
+	$this->log(">>");
+	
+}
+
+protected function outgoingNotifyOrderToGroupById($orderid,$groupid){
+	
+	$order=$this->db_fabricant->getOrderById($orderid);
+	
+	$this->outgoingNotifyOrderToGroup($order,$groupid);
+}
+
+protected function outgoingNotifyContractorProductsDelta($contractorid,$timestamp){
+	
+    //Prepare json with changed products
+    $result = $this->db_fabricant->getContractorProductsDelta($contractorid,$timestamp);
+	$json = array();
+	$json["transport"]=TRANSPORT_FABRICANT;
+	$json["type"]=OUTGOING_PRODUCTS_DELTA;
+	$json["products"]=$result;	
+ 	
+	
+	// Listing users have changed since $timestamp 	
+	$users = $this->db_profile->getUsersInGroup($contractorid);	
+	
+	foreach($users as $user) {
+		$user_id=$user["userid"];
+		//If user connected then notify him
+		if( array_key_exists(strval($user_id), $this->map_userid_connect) ){
+			$connect=$this->getConnectByUserId($user_id);
+			
+			$this->sendFrame($connect, $json);
+		}
+	
+	}
+		      
+}
+
 protected function outgoingProductsDelta($connect,$timestamp){
 	
     // Listing users have changed since $timestamp 
@@ -229,13 +342,9 @@ protected function outgoingProductsDelta($connect,$timestamp){
  	$json = array();
     $json["transport"]=TRANSPORT_FABRICANT;
 	$json["type"]=OUTGOING_PRODUCTS_DELTA;
-	$json["last_timestamp"]=time();	
     $json["products"]=$result;
 	
-	$data_string=json_encode($json,JSON_UNESCAPED_UNICODE);
-	$this->log("outgoingProductsDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".$data_string);        
-	fwrite($connect, $this->encode($data_string));	
-    //$this->log("outgoingProductsDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=(too long string)");        
+	$this->sendFrame($connect, $json);       
 }
 
 protected function outgoingCheckConnection($connect){
@@ -243,15 +352,57 @@ protected function outgoingCheckConnection($connect){
  	$json = array();
     $json["transport"]=TRANSPORT_FABRICANT;
 	$json["type"]=OUTGOING_CHECK_CONNECTION;
-	$json["last_timestamp"]=time();	
     $json["message"]="Hello, Igor. Не печалься, скоро будет все!";
 	
+	$this->sendFrame($connect, $json);        
+}
+
+protected function outgoingNotifyProductChanged($productid){
 	
-	$data_string=json_encode($json);
+	$product=$this->db_fabricant->getProductById($productid);	
+	$contractorid=$product["contractorid"];
 	
-	fwrite($connect, $this->encode($data_string));	
+	//Get users list of contractor
+    $users = $this->db_profile->getUsersInGroup($contractorid);
+ 		
+	$this->log("<<outgoingNotifyProductChanged productid=".$productid." :");
 	
-    $this->log("outgoingProductsDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+	foreach($users as $user) {
+		$user_id=$user["userid"];
+		//If user connected then notify him
+		if( array_key_exists(strval($user_id), $this->map_userid_connect) ){
+			$connect=$this->getConnectByUserId($user_id);
+			
+			$this->outgoingProduct($connect,$product);
+		}
+	
+	}
+	$this->log(">>");
+	
+}
+
+protected function outgoingProductById($connect,$productid){
+	
+	$product = $this->db_fabricant->getProductById($productid);	
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_FABRICANT;
+	$json["type"]=OUTGOING_PRODUCTS_DELTA;
+    $json["products"]= array();
+	$json["products"][]=$product;
+	
+	$this->sendFrame($connect, $json);
+}
+
+protected function outgoingProduct($connect,$product){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_FABRICANT;
+	$json["type"]=OUTGOING_PRODUCTS_DELTA;
+    $json["products"]= array();
+	$json["products"][]=$product;
+	
+	$this->sendFrame($connect, $json);   
 }
 
 protected function ProcessMessageFabricant($sender,$connects,$json) {
@@ -259,8 +410,7 @@ protected function ProcessMessageFabricant($sender,$connects,$json) {
 	$this->log("ProcessMessageFabricant. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json));
 		
 	switch($json["type"]){
-		case INCOMING_CHECK_CONNECTION :			
-		
+		case INCOMING_CHECK_CONNECTION :	
 			$this->outgoingCheckConnection($sender);
 			
 		break;			
@@ -268,7 +418,7 @@ protected function ProcessMessageFabricant($sender,$connects,$json) {
 	}
 	
 }
-	 	
+
 //--------------------Функции протокола Profile (profile protocol methods)---------------------
 
 protected function outgoingUsersDelta($connect,$timestamp){
@@ -280,14 +430,9 @@ protected function outgoingUsersDelta($connect,$timestamp){
  	$json = array();
     $json["transport"]=TRANSPORT_PROFILE;
 	$json["type"]=OUTGOING_USERS_DELTA;
-	$json["last_timestamp"]=time();	
     $json["users"]=$result;
 	
-	$data_string=json_encode($json);
-	
-	fwrite($connect, $this->encode($data_string));	
-	
-    $this->log("outgoingUsersDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+	$this->sendFrame($connect, $json);
 }
 
 protected function outgoingOneUser($connect,$userid){
@@ -299,15 +444,10 @@ protected function outgoingOneUser($connect,$userid){
  	$json = array();
     $json["transport"]=TRANSPORT_PROFILE;
 	$json["type"]=OUTGOING_USERS_DELTA;
-	$json["last_timestamp"]=time();	
     $json["users"]=array();
 	$json["users"][]=$one_user;
 	
-	
-	$data_string=json_encode($json);
-		
-	fwrite($connect, $this->encode($data_string));		
-    $this->log("outgoingOneUser. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+	$this->sendFrame($connect, $json);        
 }
 
 protected function outgoingNotifyFriends($userid){
@@ -369,23 +509,32 @@ protected function outgoingNotifyAllGroupmates($userid){
 	
 }
 
-protected function outgoingGroupsDelta($connect,$timestamp){
+protected function outgoingCustomersDelta($connect,$timestamp){
 	
     // Listing group have changed since $timestamp 
 		
-    $result = $this->db_profile->getGroupsDelta($this->getUserIdByConnect($connect),$timestamp);
+    $result = $this->db_profile->getCustomersDelta($this->getUserIdByConnect($connect),$timestamp);
  	    
  	$json = array();
     $json["transport"]=TRANSPORT_PROFILE;
 	$json["type"]=OUTGOING_GROUPS_DELTA;
-	$json["last_timestamp"]=time();	
     $json["groups"]=$result;
 	
-	$data_string=json_encode($json);
+	$this->sendFrame($connect, $json);     
+}
+
+protected function outgoingContractorsDelta($connect,$timestamp){
 	
-	fwrite($connect, $this->encode($data_string));	
+    // Listing group have changed since $timestamp 
+		
+    $result = $this->db_profile->getContractorsDelta($timestamp);
+ 	    
+ 	$json = array();
+    $json["transport"]=TRANSPORT_PROFILE;
+	$json["type"]=OUTGOING_GROUPS_DELTA;
+    $json["groups"]=$result;
 	
-    $this->log("outgoingGroupsDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+	$this->sendFrame($connect, $json);     
 }
 
 protected function outgoingGroupUsersDelta($connect,$timestamp){
@@ -400,14 +549,9 @@ protected function outgoingGroupUsersDelta($connect,$timestamp){
  	$json = array();
     $json["transport"]=TRANSPORT_PROFILE;
 	$json["type"]=OUTGOING_GROUP_USERS_DELTA;
-	$json["last_timestamp"]=time();	
     $json["group_users"]=$result;
 	
-	$data_string=json_encode($json);
-	
-	fwrite($connect, $this->encode($data_string));	
-	
-    $this->log("outgoingGroupUsersDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+	$this->sendFrame($connect, $json);       
 }
 
 protected function outgoingGroupmatesDelta($connect,$timestamp){
@@ -419,14 +563,9 @@ protected function outgoingGroupmatesDelta($connect,$timestamp){
  	$json = array();
     $json["transport"]=TRANSPORT_PROFILE;
 	$json["type"]=OUTGOING_USERS_DELTA;
-	$json["last_timestamp"]=time();	
     $json["users"]=$result;
 	
-	$data_string=json_encode($json);
-	
-	fwrite($connect, $this->encode($data_string));	
-	
-    $this->log("outgoingGroupmatesDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+	$this->sendFrame($connect, $json);        
 }
 
 protected function outgoingGroup($connect,$groupid){
@@ -438,15 +577,9 @@ protected function outgoingGroup($connect,$groupid){
  	$json = array();
     $json["transport"]=TRANSPORT_PROFILE;
 	$json["type"]=OUTGOING_GROUPS_DELTA;
-	$json["last_timestamp"]=time();	
     $json["groups"]= $groups;
 	
-	
-	$data_string=json_encode($json);
-	
-	fwrite($connect, $this->encode($data_string));	
-	
-    $this->log("outgoingGroupsDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+	$this->sendFrame($connect, $json); 
 }
 
 protected function outgoingGroupUsers($connect,$changed_users){
@@ -458,13 +591,9 @@ protected function outgoingGroupUsers($connect,$changed_users){
  	$json = array();
     $json["transport"]=TRANSPORT_PROFILE;
 	$json["type"]=OUTGOING_GROUP_USERS_DELTA;
-	$json["last_timestamp"]=time();	
     $json["group_users"]=$changed_users;
 	
-	$data_string=json_encode($json);	
-	fwrite($connect, $this->encode($data_string));	
-	
-    $this->log("outgoingGroupUsersDelta. userid=".$this->getUserIdByConnect($connect)." connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));        
+	$this->sendFrame($connect, $json);     
 }
 
 protected function outgoingUsersIfUnknown($connect,$users){
@@ -482,24 +611,43 @@ protected function outgoingUsersIfUnknown($connect,$users){
 
 protected function outgoingNotifyGroupChanged($groupid){
 	
-    // Notify all users of group about group has been changed
+	$group = $this->db_profile->getGroupById($groupid); 		
+	
+	// Notify all users if group is contractor		
+	if($group["type"]==0){
 		
-    $users = $this->db_profile->getUsersInGroup($groupid);
- 		
-	$this->log("<<outgoingNotifyGroupChanged groupid=".$groupid." :");
-	
-	foreach($users as $user) {
-		$user_id=$user["userid"];
-		//If user connected then notify him
-		if( array_key_exists(strval($user_id), $this->map_userid_connect) ){
-			$connect=$this->getConnectByUserId($user_id);
-			
-			$this->outgoingGroup($connect,$groupid);
+		foreach($connects as $connect) {			
+			$this->outgoingGroup($connect,$groupid);			
 		}
-	
 	}
-	$this->log(">>");
 	
+	// Notify only groupmates if customer	
+	if($group["type"]==1){
+		$users = $this->db_profile->getUsersInGroup($groupid); 		
+		$this->log("<<outgoingNotifyGroupChanged groupid=".$groupid." :");	
+		foreach($users as $user) {
+			$user_id=$user["userid"];
+			//If user connected then notify him
+			if( array_key_exists(strval($user_id), $this->map_userid_connect) ){
+				$connect=$this->getConnectByUserId($user_id);
+				
+				$this->outgoingGroup($connect,$groupid);
+			}
+		
+		}
+		$this->log(">>");
+	}
+}
+
+protected function outgoingNotifyGroupsChanged($groups){
+	
+	if(!isset($groups)){
+		return;
+	}
+	
+	foreach($groups as $group){
+		$this->outgoingNotifyGroupChanged($group["id"]);
+	}
 }
 
 protected function outgoingNotifyGroupUsersChanged($groupid,$changed_users){	
@@ -519,6 +667,7 @@ protected function outgoingNotifyGroupUsersChanged($groupid,$changed_users){
 		}
 	
 	}
+	
 	$this->log(">>");
 	
 }
@@ -529,7 +678,7 @@ protected function groupOperationAddUsers($senderid,$groupid,$users){
 	
     //Presently all user consists in group can do that operation. Status: 0,1,2
 	$current_user_status=$this->db_profile->getUserStatusInGroup($groupid,$senderid);			
-	if( !( ($current_user_status==0)||($current_user_status==1)||($current_user_status==2) ) ){					
+	if( !( ($current_user_status==1)||($current_user_status==2) ) ){					
 		$this->log("groupOperationAddUsers. No permission. Sender not in group. senderid=".$senderid." groupid=".$groupid); 												
 		return;
 	}
@@ -543,11 +692,11 @@ protected function groupOperationAddUsers($senderid,$groupid,$users){
 		$userid=$user["id"];
 		
 		//You can add user to group only if this user is your friend
-		$friend_status=$this->db_profile->getFriendStatus($senderid,$userid);
+		/*$friend_status=$this->db_profile->getFriendStatus($senderid,$userid);
 		if($friend_status!=3){
 			$this->log("groupOperationAddUsers. No permission. User not friend of sender. senderid=".$senderid." userid=".$userid); 												
 			continue;
-		}
+		}*/
 		
 		$this->db_profile->addUserToGroup($groupid,$userid,$status);
 		
@@ -584,13 +733,17 @@ protected function groupOperationAddUsers($senderid,$groupid,$users){
 						
 	$this->outgoingNotifyGroupUsersChanged($groupid,$changed_users);
 	
+	foreach($changed_users as $user){
+		
+	}
+	
 }
 
 protected function groupOperationSave($senderid,$groupid,$json){	
 		
     //Presently all user consists in group can do that operation. Status: 0,1,2
 	$current_user_status=$this->db_profile->getUserStatusInGroup($groupid,$senderid);			
-	if( !( ($current_user_status==0)||($current_user_status==1)||($current_user_status==2) ) ){					
+	if( !( ($current_user_status==1)||($current_user_status==2) ) ){					
 		$this->log("INCOMING_GROUP_OPERATION. No permission. senderid=".$senderid." groupid=".$groupid." operationid=".$operationid); 												
 		return;
 	}
@@ -598,6 +751,36 @@ protected function groupOperationSave($senderid,$groupid,$json){
 	if(isset($json["name"])){
 		$name = $json["name"];
 		$this->db_profile->changeGroupName($name,$groupid);	
+		
+		$groups=$this->db_profile->getGroupById($groupid);		
+		if(sizeof($groups)!=1)return;		
+		$groups=$this->db_profile->getGroupById($groupid);		
+		$json_info=json_decode($groups[0]["info"],true);
+		$json_info["name"]["text"]=$name;		
+		$this->db_profile->changeGroupInfo(json_encode($json_info),$groupid);	
+	}
+	
+	if(isset($json["address"])){
+		$address = $json["address"];
+		$this->db_profile->changeGroupAddress($address,$groupid);	
+	}
+	
+	if(isset($json["phone"])){
+		$phone = $json["phone"];
+		$this->db_profile->changeGroupPhone($phone,$groupid);	
+	}
+	
+	if(isset($json["name_full"])){
+		$name_full = $json["name_full"];
+		
+		$groups=$this->db_profile->getGroupById($groupid);		
+		if(sizeof($groups)!=1)return;		
+		$groups=$this->db_profile->getGroupById($groupid);		
+		$json_info=json_decode($groups[0]["info"],true);
+		$json_info["name_full"]["text"]=$name_full;		
+		$this->db_profile->changeGroupInfo(json_encode($json_info),$groupid);	
+		
+		$this->db_profile->changeGroupInfo(json_encode($json_info),$groupid);	
 	}
 	
 	$this->log("groupOperationSave. Group saved. groupid=".$groupid);
@@ -644,6 +827,12 @@ protected function groupOperationUserStatus($senderid,$userid,$groupid,$status){
 		
 		case GROUPSTATUS_ADMIN :
 			if( (($sender_status==1)||($sender_status==2)) && ($senderid!=$userid) && (($user_status==0)) ){
+				$count=$this->db_profile->changeUserStatusInGroup($groupid,$userid,$status);
+			}
+		break;
+		
+		case GROUPSTATUS_COMMON_USER :
+			if( (($sender_status==1)||($sender_status==2)) && ($senderid!=$userid) && (($user_status==2)) ){
 				$count=$this->db_profile->changeUserStatusInGroup($groupid,$userid,$status);
 			}
 		break;
@@ -737,7 +926,7 @@ protected function ProcessMessageProfile($sender,$connects,$json) {
 				$user_json = $this->db_profile->getUserById($user_id);
 				$status=$user_json["status"];
 			
-				$this->db_profile->updateUser($user_id,$name,$status);
+				$this->db_profile->updateUserName($user_id,$name);
 				
 				$this->log("Sender:");  
 				//Уведомляем отправителя об изменении name
@@ -748,7 +937,6 @@ protected function ProcessMessageProfile($sender,$connects,$json) {
 				$this->outgoingNotifyAllGroupmates($user_id);
 				
 			}
-			
 			
 		break;
 		
@@ -781,10 +969,44 @@ protected function ProcessConsoleOperation($connect,$info) {
 			
 			//Response to console client
 			$response = array();
-			$response["message"]="WebsocketServer. ProcessConsoleOperation CONSOLE_OPERATION_USER_CHANGED success userid=".$userid;					
-			$data_string=json_encode($response);
-			fwrite($connect, $this->encode($data_string));
+			$response["message"]="WebsocketServer. ProcessConsoleOperation CONSOLE_OPERATION_USER_CHANGED success userid=".$userid;
+			$this->sendFrame($connect, $response);
 		
+		break;
+		
+		case CONSOLE_OPERATION_GROUP_CHANGED:
+			$groupid=$info["groupid"];
+			
+			$this->log("<<<CONSOLE_OPERATION_GROUP_CHANGED:");
+							
+			$this->outgoingNotifyGroupChanged($groupid);
+			
+			$group_users=$this->db_profile->getUsersInGroup($groupid);			
+			$this->outgoingNotifyGroupUsersChanged($groupid,$group_users);
+			
+			$this->log(">>>");				
+			
+			//Response to console client
+			$response = array();
+			$response["message"]="WebsocketServer. ProcessConsoleOperation CONSOLE_OPERATION_GROUP_CHANGED success groupid=".$groupid;					
+			$this->sendFrame($connect, $response);
+		
+		break;
+		
+		case CONSOLE_OPERATION_PRODUCT_CHANGED:
+			$productid=$info["productid"];
+			
+			$this->log("<<<CONSOLE_OPERATION_PRODUCT_CHANGED:");
+			
+			$this->outgoingNotifyProductChanged($productid);
+			
+			$this->log(">>>");
+			
+			//Response to console client
+			$response = array();
+			$response["message"]="WebsocketServer. ProcessConsoleOperation CONSOLE_OPERATION_PRODUCT_CHANGED success productid=".$productid;
+			$this->sendFrame($connect, $response);
+			
 		break;
 				
 		case CONSOLE_OPERATION_GROUP:
@@ -801,8 +1023,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 					//Response to console client					
 					$response = array();
 					$response["message"]="WebsocketServer. ProcessConsoleOperation CONSOLE_OPERATION_GROUP.GROUPOPERATION_ADD_USERS success groupid=".$groupid;					
-					$data_string=json_encode($response);
-					fwrite($connect, $this->encode($data_string));	
+					$this->sendFrame($connect, $response);	
 					
 				break;
 				
@@ -814,20 +1035,19 @@ protected function ProcessConsoleOperation($connect,$info) {
 					//Response to console client					
 					$response = array();
 					$response["message"]="WebsocketServer. ProcessConsoleOperation CONSOLE_OPERATION_GROUP.GROUPOPERATION_SAVE success groupid=".$groupid;					
-					$data_string=json_encode($response);
-					fwrite($connect, $this->encode($data_string));
+					$this->sendFrame($connect, $response);
 					
 				break;
 				
-				case GROUPOPERATION_CREATE :
+				case GROUPOPERATION_CREATE :					
+					$address=$info["json"];
 					$groupid=$this->groupOperationCreate($senderid);
 					
 					//Response to console client					
 					$response = array();
 					$response["groupid"]=$groupid;
 					$response["message"]="WebsocketServer. ProcessConsoleOperation CONSOLE_OPERATION_GROUP.GROUPOPERATION_CREATE success groupid=".$groupid;					
-					$data_string=json_encode($response);
-					fwrite($connect, $this->encode($data_string));
+					$this->sendFrame($connect, $response);
 					
 				break;
 			}	
@@ -845,14 +1065,384 @@ protected function ProcessConsoleOperation($connect,$info) {
 			$response = array();
 			$response["message"]="WebsocketServer. Server is running";					
 			$response["status"]=1;
-			$data_string=json_encode($response);
-			fwrite($connect, $this->encode($data_string));
+			$this->sendFrame($connect, $response);
 		
+		break;
+		
+		case CONSOLE_OPERATION_ORDER:
+			
+			$order_operationid=$info["order_operationid"];
+			$senderid=$info["senderid"];
+			
+			$record=json_decode($info["record"],true);
+			$this->log("order_operationid=".$order_operationid);
+			switch($order_operationid){
+				
+				case ORDEROPERATION_CREATE :
+					$orderid=$this->db_fabricant->createOrder($record);					
+					$this->outgoingNotifyOrderToGroupById($orderid,$record["customerid"]);
+					
+					//Response to console client					
+					$response = array();
+					$response["orderid"]=$orderid;
+					$response["message"]="Order created";					
+					$this->sendFrame($connect, $response);
+					
+				break;
+								
+				case ORDEROPERATION_UPDATE :
+								
+					$this->db_fabricant->updateOrder($record);
+					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					
+					//Response to console client					
+					$response = array();
+					$response["message"]="Order updated";
+					$this->sendFrame($connect, $response);
+					
+				break;
+				
+				case ORDEROPERATION_ACCEPT :
+					$this->db_fabricant->acceptOrder($record);
+					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					
+					//Response to console client					
+					$response = array();
+					$response["message"]="Order accepted";
+					$this->sendFrame($connect, $response);
+					
+				break;
+				
+				case ORDEROPERATION_REMOVE :
+					$this->db_fabricant->removeOrder($record);
+					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					
+					//Response to console client					
+					$response = array();
+					$response["message"]="Order removed";
+					$this->sendFrame($connect, $response);
+					
+				break;
+				
+				case ORDEROPERATION_TRANSFER :
+									
+					$this->db_fabricant->transferOrder($record);
+					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					
+					//Response to console client					
+					$response = array();
+					$response["message"]="Order transferred";
+					$this->sendFrame($connect, $response);
+					
+				break;
+				
+				case ORDEROPERATION_MAKE_PAID :
+					$this->db_fabricant->makeOrderPaid($record);
+					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					
+					//Response to console client					
+					$response = array();
+					$response["message"]="Order paid";
+					$this->sendFrame($connect, $response);
+					
+				break;
+				
+			}	
+			
+		break;
+		
+		case CONSOLE_OPERATION_SALE:
+			
+			$sale_operationid=$info["sale_operationid"];
+			$senderid=$info["senderid"];
+									
+			switch($sale_operationid){
+				
+				case SALE_OPERATION_CREATE :
+					
+					$contractorid=$info["contractorid"];
+					$type=$info["type"];			
+					$label=$info["label"];
+					$name=$info["name"];
+					$name_full=$info["name_full"];
+					$summary=$info["summary"];
+					
+					if(!$this->db_profile->isUserInGroup($contractorid,$senderid)){				
+						$this->consoleResponse($connect,true,500,"User is not in contractor group. contractorid=".$contractorid." userid=".$senderid);
+						return;
+					}
+					
+					//create new sale
+					switch($type){
+						case SALE_TYPE_SALE:
+							$rate=$info["rate"];	
+							$saleid=$this->db_fabricant->createSaleRate($senderid,$contractorid,$label,$name,$name_full,$summary,$rate);
+							break;
+							
+						case SALE_TYPE_DISCOUNT:
+							$rate=$info["rate"];				
+							$min_summ=$info["min_summ"];
+							$max_summ=$info["max_summ"];
+							$saleid=$this->db_fabricant->createDiscount($senderid,$contractorid,$label,$name,$name_full,$summary,$rate,$min_summ,$max_summ);
+							break;
+							
+						case SALE_TYPE_INSTALLMENT:
+							$time_notification=$info["time_notification"];				
+							$saleid=$this->db_fabricant->createInstallment($senderid,$contractorid,$label,$name,$name_full,$summary,$time_notification);
+							break;						
+					}
+					
+					//add created sale into contractor
+					if(!isset($saleid)){
+						$this->consoleResponse($connect,true,500,"Sale id is not set");
+						return;
+					}	
+					
+					$sale=$this->db_fabricant->getSaleById($saleid);	
+					$condition=json_decode($sale["condition"],true);			
+					$this->db_profile->addSaleToContractorInfo($contractorid,$condition);
+				
+					//notify delta changes
+					$this->log("Sale created. type=".$type." contractorid=".$contractorid." saleid=".$saleid );						
+					$this->outgoingNotifyGroupChanged($contractorid);
+					
+					$this->consoleResponse($connect,false,200,"Sale created");						
+					
+				break;
+				
+				case SALE_OPERATION_REMOVE :
+					$saleid=$info["saleid"];
+					
+					$sale=$this->db_fabricant->getSaleById($saleid);
+					$condition=json_decode($sale["condition"],true);
+					
+					//remove sale in sales table
+					if(!$this->db_fabricant->removeSale($senderid,$saleid)){
+						$this->consoleResponse($connect,true,500,"Sale saleid=".$saleid." is not found");
+						return;
+					}
+					
+					$contractorid=$sale["contractorid"];
+					$type=$condition["type"];			
+					
+					//remove sale from contractor's info
+					$this->db_profile->removeSaleFromContractorInfo($sale["contractorid"],$condition);
+										
+					//notify delta changes
+					$this->log("Sale updated. type=".$type." contractorid=".$contractorid." saleid=".$saleid );						
+					$this->outgoingNotifyGroupChanged($contractorid);
+					
+					//make actions specified for type
+					switch($type){
+						case SALE_TYPE_SALE:
+						case SALE_TYPE_DISCOUNT:
+							
+							$before_change_products=time()-1;
+							
+							$tag=$condition["tag_product"];
+							$this->db_fabricant->removeTagFromContractorProducts($contractorid,$tag);
+							
+							//notify delta of products after removing of the installment price
+							$this->outgoingNotifyContractorProductsDelta($contractorid,$before_change_products);
+							
+							break;
+						
+						case SALE_TYPE_INSTALLMENT:
+							$before_change_products=time()-1;
+							
+							$price_name=$condition["price_name"];
+							$this->db_fabricant->removePriceInstallmentFromContractorProducts($contractorid,$price_name);
+							
+							//notify delta of products after removing of the installment price
+							$this->outgoingNotifyContractorProductsDelta($contractorid,$before_change_products);
+							
+							break;
+					}
+					
+					//Removing tag_customer	from customers								
+					$tag=$condition["tag_customer"];
+					$customers=$this->db_profile->removeTagFromCustomers($tag);
+					
+					//Notify changed customers
+					$this->outgoingNotifyGroupsChanged($customers);
+					
+					//Console response					
+					$this->consoleResponse($connect,false,200,"Sale removed");
+					
+				break;
+				
+				case SALE_OPERATION_UPDATE :
+									
+					$saleid=$info["saleid"];
+					$sale=$this->db_fabricant->getSaleById($saleid);
+					
+					if(!isset($sale)){
+						$this->consoleResponse($connect,true,500,"Sale id is not set");
+						return;
+					}	
+					
+					$contractorid=$sale["contractorid"];
+					
+					if(!$this->db_profile->isUserInGroup($contractorid,$senderid)){				
+						$this->consoleResponse($connect,true,500,"User is not in contractor group. contractorid=".$contractorid." userid=".$senderid);
+						return;
+					}
+					
+					//set updated params to condition
+					$condition=json_decode($sale["condition"],true);	
+					
+					$text_object=array();
+					$text_object["text"]=$info["label"];
+					$condition["label"]=$text_object;
+					
+					$text_object=array();
+					$text_object["text"]=$info["name"];
+					$condition["name"]=$text_object;
+					
+					$text_object=array();
+					$text_object["text"]=$info["name_full"];
+					$condition["name_full"]=$text_object;
+					
+					$text_object=array();
+					$text_object["text"]=$info["summary"];
+					$condition["summary"]=$text_object;				
+					
+					//set specific condition params
+					$type=$condition["type"];					
+					switch($type){
+						case SALE_TYPE_SALE:
+							$condition["rate"]=$info["rate"];
+							break;
+						
+						case SALE_TYPE_DISCOUNT:
+							$condition["rate"]=$info["rate"];
+							$condition["min_summ"]=$info["min_summ"];	
+							$condition["max_summ"]=$info["max_summ"];
+							break;	
+						
+						case SALE_TYPE_INSTALLMENT:
+							$condition["time_notification"]=$info["time_notification"];											
+							break;									
+					}
+					
+					//update sale in sales table
+					$this->db_fabricant->updateSale($senderid,$saleid,$condition);
+					
+					//replace sale in contractor info		
+					$this->db_profile->updateSaleInContractorInfo($contractorid,$condition);
+				
+					//notify delta changes
+					$this->log("Sale updated. type=".$type." contractorid=".$contractorid." saleid=".$saleid );						
+					$this->outgoingNotifyGroupChanged($contractorid);
+					
+					$this->consoleResponse($connect,false,200,"Sale updated");						
+					
+				break;
+				
+				case SALE_OPERATION_ADD_TO_CUSTOMER :
+					$saleid=$info["saleid"];					
+					$sale=$this->db_fabricant->getSaleById($saleid);
+					
+					if(!isset($sale)){
+						$this->consoleResponse($connect,true,403,"Sale with saleid=".$saleid." not found");
+						return;
+					}
+					
+					if($sale["status"]==2){
+						$this->consoleResponse($connect,true,403,"Sale with saleid=".$saleid." was removed");
+						return;
+					}
+					
+					$condition=json_decode($sale["condition"],true);
+										
+					$customerid=$info["customerid"];
+					$groups=$this->db_profile->getGroupById($customerid);
+					if((!isset($groups))||(!isset($groups[0]))){
+						$this->consoleResponse($connect,true,403,"Customer with customer id not found");
+						return;
+					}
+					$customer=$groups[0];
+					
+					if($customer["type"]==0){
+						$this->consoleResponse($connect,true,403,"Group with customerid is not customer. type=".$customer["type"]);
+						return;
+					}
+					
+					$user_status_in_contractor=$this->db_profile->getUserStatusInGroup($sale["contractorid"],$senderid);
+					if(($user_status_in_contractor!=1)&&($user_status_in_contractor!=2)){									
+						$this->consoleResponse($connect,true,403,"Only contractor user can add tag to customer. user_status_in_contractor=".$user_status_in_contractor);
+						return;
+					}
+					
+					
+					
+					//Add tag_customer to customer													
+					$this->db_profile->addTagToGroup($condition["tag_customer"],$customerid);
+					
+					//Notify changed customer
+					$this->outgoingNotifyGroupChanged($customerid);
+					
+					//Console response					
+					$this->consoleResponse($connect,false,200,"Sale added to customer");
+					
+				break;
+				
+				case SALE_OPERATION_REMOVE_FROM_CUSTOMER :
+					$saleid=$info["saleid"];					
+					$sale=$this->db_fabricant->getSaleById($saleid);
+					
+					if(!isset($sale)){
+						$this->consoleResponse($connect,true,403,"Sale with saleid not found");
+						return;
+					}
+					
+					$condition=json_decode($sale["condition"],true);
+										
+					$customerid=$info["customerid"];
+					$groups=$this->db_profile->getGroupById($customerid);
+					if((!isset($groups))||(!isset($groups[0]))){
+						$this->consoleResponse($connect,true,403,"Customer with customer id not found");
+						return;
+					}					
+					$customer=$groups[0];
+					
+					$user_status_in_contractor=$this->db_profile->getUserStatusInGroup($sale["contractorid"],$senderid);
+					if(($user_status_in_contractor!=1)&&($user_status_in_contractor!=2)){									
+						$this->consoleResponse($connect,true,403,"Only contractor user can remove tag from customer. user_status_in_contractor=".$user_status_in_contractor);
+						return;
+					}
+					
+					//Remove tag_customer from customer													
+					$this->db_profile->removeTagFromGroup($condition["tag_customer"],$customerid);
+					
+					//Notify changed customer
+					$this->outgoingNotifyGroupChanged($customerid);
+					
+					//Console response					
+					$this->consoleResponse($connect,false,200,"Sale removed from customer");
+					
+				break;
+			}	
+			
 		break;
 	}
 	
+	
+	
 }
-	 
+
+protected function consoleResponse($connect,$error,$status,$message){
+	$response=array();
+	$response["error"]=$error;
+	$response["message"]=$message;					
+	$response["success"]=($error?0:1);
+	$response["status"]=$status;
+	
+	$this->log("consoleResponse. status=".$status." message=".$message);
+	
+	$this->sendFrame($connect, $response);
+}
+
 //--------------------Функции протокола чата (chat protocol methods)-----------------------
 
 protected function ConfirmToSender($connect, $json) {
@@ -865,7 +1455,7 @@ protected function ConfirmToSender($connect, $json) {
 		
 		$interlocutor_id=$json["interlocutor_id"];	
 		$string_data='{"transport":"'.$transport.'", "message_id":"'.$message_id.'", "interlocutor_id":"'.$interlocutor_id.'", "date":"'.$date.'", "last_timestamp":"'.time().'"}';
-		fwrite($connect, $this->encode($string_data));
+		$this->sendFrame($connect, json_decode($string_data,true));
 		$this->log("ConfirmToSender. Private. Sender.connectId=".$this->getIdByConnect($connect).", Sender.userid=".$this->getUserIdByConnect($connect).", client.message_id=".$message_id);
 	}else 
 	if(isset($json["group_id"])) {
@@ -873,7 +1463,7 @@ protected function ConfirmToSender($connect, $json) {
 		$group_id=$json["group_id"];	
 		$id=$json["id"];//server id of group-message
 		$string_data='{"transport":"'.$transport.'", "message_id":"'.$message_id.'", "id":"'.$id.'", "group_id":"'.$group_id.'", "date":"'.$date.'", "last_timestamp":"'.time().'"}';
-		fwrite($connect, $this->encode($string_data));
+		$this->sendFrame($connect, json_decode($string_data,true));
 		$this->log("ConfirmToSender. Group. Sender.connectId=".$this->getIdByConnect($connect).", Sender.userid=".$this->getUserIdByConnect($connect).", group_id=".$group_id.", client.message_id=".$message_id);
 	}
 		
@@ -891,7 +1481,7 @@ protected function SendToDestination($connect, $json) {
 		
 		$data_string='{"transport":"'.$transport.'","value":"'.$value.'","date":"'.$date.'","interlocutor_id":"'.$interlocutor_id.'", "last_timestamp":"'.time().'"}';
 		
-		fwrite($connect, $this->encode($data_string));	
+		$this->sendFrame($connect, json_decode($data_string,true));	
 		$this->log("SendToDestination. Private. Destination.connectid=".$this->getIdByConnect($connect).", Destination.userid=".$this->getUserIdByConnect($connect)." Message-data: ".$data_string);
 	}else
 	if(isset($json["group_id"])) {
@@ -903,7 +1493,7 @@ protected function SendToDestination($connect, $json) {
 		
 		$data_string='{"transport":"'.$transport.'","value":"'.$value.'","date":"'.$date.'","group_id":"'.$group_id.'","id":"'.$id.'","sender":"'.$sender.'", "last_timestamp":"'.time().'"}';
 		
-		fwrite($connect, $this->encode($data_string));	
+		$this->sendFrame($connect, json_decode($data_string,true));	
 		$this->log("SendToDestination. Group. Destination.connectid=".$this->getIdByConnect($connect).", Destination.userid=".$this->getUserIdByConnect($connect)." Message-data: ".$data_string);
 	}
 	
@@ -996,7 +1586,7 @@ protected function outgoingConfirmStartRecieve($connect) {
 	$this->log("outgoingStopBroadcast. connectId=".$this->getIdByConnect($connect));
 	
 	$string_data='{"transport":"'.TRANSPORT_MAP.'", "type":"'.OUTGOING_CONFIRM_START_RECIEVE.'", "last_timestamp":"'.time().'"}';
-	fwrite($connect, $this->encode($string_data));
+	$this->sendFrame($connect, json_decode($string_data,true));
 	
 		
 }
@@ -1006,7 +1596,7 @@ protected function outgoingStartBroadcast($connect) {
 	$this->log("outgoingStartBroadcast. connectId=".$this->getIdByConnect($connect));
 	
 	$string_data='{"transport":"'.TRANSPORT_MAP.'", "type":"'.OUTGOING_START_BROADCAST.'", "last_timestamp":"'.time().'"}';
-	fwrite($connect, $this->encode($string_data));
+	$this->sendFrame($connect, json_decode($string_data,true));
 	
 		
 }
@@ -1016,7 +1606,7 @@ protected function outgoingStopBroadcast($connect) {
 	$this->log("outgoingStopBroadcast. connectId=".$this->getIdByConnect($connect));
 	
 	$string_data='{"transport":"'.TRANSPORT_MAP.'", "type":"'.OUTGOING_STOP_BROADCAST.'", "last_timestamp":"'.time().'"}';
-	fwrite($connect, $this->encode($string_data));
+	$this->sendFrame($connect, json_decode($string_data,true));
 	
 		
 }
@@ -1026,10 +1616,8 @@ protected function outgoingCoors($connect, $json) {
 	
 	$json["transport"]=TRANSPORT_MAP;
 	$json["type"]=OUTGOING_COORS;
-	$json["last_timestamp"]=time();
-	$data_string=json_encode($json);
 	
-	fwrite($connect, $this->encode($data_string));	
+	$this->sendFrame($connect, $json);	
 	
 		
 }
@@ -1284,8 +1872,12 @@ protected function getUserIdByConnect($connect) {
 protected function putConnect($connect,$userid) {
 	$connectid=$this->getIdByConnect($connect);
 	
-	$this->map_connectid_userid[strval($connectid)]=$userid;
+	$this->map_connectid_userid[strval($connectid)]=$userid;	
 	$this->map_userid_connect[strval($userid)]=$connect;
+	
+	//Counting every sent frame to guarantee delievering
+	$this->map_connectid_framecount[strval($connectid)]=(1*2)-2;
+	
 	array_push($this->connects,$connect);
 }
 
@@ -1296,6 +1888,8 @@ protected function removeConnect($connect) {
 	
 	unset($this->map_userid_connect[strval($this->getUserIdByConnect($connect))]);
 	unset($this->map_connectid_userid[strval($connectid)]);
+	unset($this->map_connectid_framecount[strval($connectid)]);
+	
 	unset($this->connects[array_search($connect, $this->connects)]);
 }
 
@@ -1316,7 +1910,7 @@ protected function onOpen($connect, $info) {
 	//-------------Notification---------------------------
 	
 	//Отправляем уведомление об удачном подключении	
-	fwrite($connect, $this->encode('{"transport":"100","value":"Connected to chat-server","last_timestamp":"'.time().'"}'));
+	$this->sendFrame($connect, json_decode('{"transport":"100","value":"Connected to fabricant-server","last_timestamp":"'.time().'"}',true));
 	
 	$userid=$info["userid"];
 	$last_timestamp=$info["last_timestamp"];
@@ -1369,10 +1963,6 @@ protected function onOpen($connect, $info) {
 		//$messages=$this->db_chat->getLast20GroupMessagesOfUser($userid);	
 	}
 	
-	//----------Fabricant--------------------------
-	
-	$this->outgoingProductsDelta($connect,$info["last_timestamp"]);
-	
 	//------------Map------------------
 	
 	//$this->outgoingStartBroadcast($connect);
@@ -1380,11 +1970,17 @@ protected function onOpen($connect, $info) {
 	//----------Profile--------------------------
 	
 	$this->outgoingUsersDelta($connect,$info["last_timestamp"]);	
-	$this->outgoingGroupsDelta($connect,$info["last_timestamp"]);
+	
+	$this->outgoingCustomersDelta($connect,$info["last_timestamp"]);
+	$this->outgoingContractorsDelta($connect,$info["last_timestamp"]);
+	
 	$this->outgoingGroupUsersDelta($connect,$info["last_timestamp"]);
 	$this->outgoingGroupmatesDelta($connect,$info["last_timestamp"]);
 	
+	//----------Fabricant--------------------------
 	
+	$this->outgoingProductsDelta($connect,$info["last_timestamp"]);
+	$this->outgoingOrdersDelta($connect,$info["last_timestamp"]);
 	
 }
 
@@ -1397,9 +1993,23 @@ protected function onClose($connect) {
 }
 
 protected function onMessage($sender,$connects,$data) {
-	//Пользовательский сценарий. Обратный вызов при получении сообщения
+
+	$decoded_data=$this->decode($data);
 	
-	$message_string= $this->decode($data)['payload'] . "\n";		
+	if($decoded_data['type']=='ping'){
+		$this->log("incomingPing. payload=".$decoded_data['payload']." connectId=".$this->getIdByConnect($sender)." userId=".$this->getUserIdByConnect($sender)." timestamp=".time());
+		
+		fwrite($sender, $this->encode($decoded_data['payload'],'pong'));
+		$this->log("outgoingPong. payload=".$decoded_data['payload']." connectId=".$this->getIdByConnect($sender)." userId=".$this->getUserIdByConnect($sender)." timestamp=".time());
+		
+		return;
+	}
+	
+	//Далее принимаем только текстоввые сообщения
+	if($decoded_data['type']!='text')return;
+	
+	//Пользовательский сценарий. Обратный вызов при получении сообщения	
+	$message_string= $decoded_data['payload'] . "\n";		
 	$json=json_decode($message_string,true);
 	
 	if( array_key_exists("transport",$json) ){
@@ -1429,6 +2039,23 @@ protected function onMessage($sender,$connects,$data) {
 		
 	}
 	
+}
+
+protected function sendFrame($connect,$json) {
+	
+	$connectid=$this->getIdByConnect($connect);
+	
+	if( array_key_exists(strval($connectid), $this->map_connectid_framecount) ){
+		$this->map_connectid_framecount[strval($connectid)]=1+2-2+$this->map_connectid_framecount[strval($connectid)];		
+		$json["frame_count"]=$this->map_connectid_framecount[strval($connectid)];		
+	}
+	
+	$json["last_timestamp"]=time();
+	
+	$data_string=json_encode($json,JSON_UNESCAPED_UNICODE);
+	$this->log("sendFrame. final=".$data_string);
+	
+	fwrite($connect, $this->encode($data_string));
 }
 
 function handshake($connect){
@@ -1561,11 +2188,17 @@ function decode($data){
     $isMasked = ($secondByteBinary[0] == '1') ? true : false;
     $payloadLength = ord($data[1]) & 127;
 
-    // unmasked frame is received:
-    if (!$isMasked) {
-        return array('type' => '', 'payload' => '', 'error' => 'protocol error (1002)');
-    }
-
+	//$this->log("decode. opcode=".$opcode);
+	
+	
+	
+    //// unmasked frame is received:
+    //if (!$isMasked) {
+    //    return array('type' => '', 'payload' => '', 'error' => 'protocol error (1002)');
+    //}
+	
+	$decodedData['masked']=$isMasked;
+	
     switch ($opcode) {
         // text frame:
         case 1:
