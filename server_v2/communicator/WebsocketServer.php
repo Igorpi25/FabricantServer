@@ -10,6 +10,7 @@ log: string - file's name to save logs
 */
 
 //------------------Transport constants----------------------------
+
 define("TRANSPORT_NOTIFICATION",100);
 define("TRANSPORT_TEXT",1);
 define("TRANSPORT_MAP",2);
@@ -96,6 +97,7 @@ define("CONSOLE_OPERATION_ORDER", 3);
 define("CONSOLE_OPERATION_SALE", 4);
 define("CONSOLE_OPERATION_GROUP_CHANGED", 5);
 define("CONSOLE_OPERATION_PRODUCT_CHANGED", 6);
+
 
 
 class WebsocketServer {
@@ -403,6 +405,49 @@ protected function outgoingProduct($connect,$product){
 	$json["products"][]=$product;
 	
 	$this->sendFrame($connect, $json);   
+}
+
+protected function outgoingRemoteToast($connect,$text){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_FABRICANT;
+	$json["remote"]="toast";
+	$json["text"]=$text;
+	
+	$this->sendFrame($connect, $json);        
+}
+
+protected function outgoingRemoteInfoDialog($connect,$title,$text){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_FABRICANT;
+	$json["remote"]="dialog";
+	$json["type"]="info";
+    $json["title"]=$title;
+	$json["text"]=$text;
+	
+	$this->sendFrame($connect, $json);        
+}
+
+protected function outgoingRemoteUpdateDialog($connect,$title,$text){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_FABRICANT;
+	$json["remote"]="dialog";
+	$json["type"]="update";
+    $json["title"]=$title;
+	$json["text"]=$text;
+	
+	$this->sendFrame($connect, $json);        
+}
+
+protected function outgoingRemoteReset($connect){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_FABRICANT;
+	$json["remote"]="reset";
+	
+	$this->sendFrame($connect, $json);        
 }
 
 protected function ProcessMessageFabricant($sender,$connects,$json) {
@@ -1906,6 +1951,12 @@ public function log($message){
 //-------Стандартные функции протокола WebSocket----------
   
 protected function onOpen($connect, $info) {
+		
+	//Начало транзакции дельты
+	$this->sendFrame($connect, json_decode('{"transport":"begin"}',true));
+	
+	//Начало транзакции дельты
+	$this->sendFrame($connect, json_decode('{"transaction":"begin"}',true));
 	
 	//-------------Notification---------------------------
 	
@@ -1981,6 +2032,9 @@ protected function onOpen($connect, $info) {
 	
 	$this->outgoingProductsDelta($connect,$info["last_timestamp"]);
 	$this->outgoingOrdersDelta($connect,$info["last_timestamp"]);
+	
+	//Завершение транзакции дельты
+	$this->sendFrame($connect, json_decode('{"transaction":"end"}',true));
 	
 }
 
