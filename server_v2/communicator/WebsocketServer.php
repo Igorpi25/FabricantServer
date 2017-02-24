@@ -656,15 +656,24 @@ protected function outgoingUsersIfUnknown($connect,$users){
 
 protected function outgoingNotifyGroupChanged($groupid){
 	
-	$group = $this->db_profile->getGroupById($groupid); 		
+	$groups = $this->db_profile->getGroupById($groupid); 		
+	if(!isset($groups) || count($groups)!=1 ){
+		
+		$this->log("outgoingNotifyGroupChanged groupid=".$groupid." not found, or has problem");	
+		return;
+	}
+	
+	$group=$groups[0];
 	
 	// Notify all users if group is contractor		
 	if($group["type"]==0){
-		
-		foreach($connects as $connect) {			
+		$this->log("<<outgoingNotifyGroupChanged groupid=".$groupid." :");	
+		foreach($this->connects as $connect) {			
 			$this->outgoingGroup($connect,$groupid);			
 		}
-	}
+		$this->log(">>");
+		return;
+	} 
 	
 	// Notify only groupmates if customer	
 	if($group["type"]==1){
@@ -995,7 +1004,13 @@ protected function ProcessMessageProfile($sender,$connects,$json) {
 
 protected function ProcessConsoleOperation($connect,$info) {
 	
-	$this->log("ProcessConsoleOperation. operation = ".$info["operation"]);
+	$this->log("ProcessConsoleOperation. info = ".json_encode($info,JSON_UNESCAPED_UNICODE));
+	
+	//Удаляем последствие addslashes из WebsocketClient 
+	foreach($info as $key => $value)
+	{				
+		$info[$key]=json_decode($value);				
+	}	
 	
 	switch($info["operation"]){
 		case CONSOLE_OPERATION_USER_CHANGED:
@@ -1319,6 +1334,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 				case SALE_OPERATION_UPDATE :
 									
 					$saleid=$info["saleid"];
+					
 					$sale=$this->db_fabricant->getSaleById($saleid);
 					
 					if(!isset($sale)){
@@ -1366,6 +1382,8 @@ protected function ProcessConsoleOperation($connect,$info) {
 							break;	
 						
 						case SALE_TYPE_INSTALLMENT:
+							$this->log("SALE_TYPE_INSTALLMENT info=".json_encode($info,JSON_UNESCAPED_UNICODE));
+							$this->log("SALE_TYPE_INSTALLMENT condition=".json_encode($condition,JSON_UNESCAPED_UNICODE));
 							$condition["time_notification"]=$info["time_notification"];											
 							break;									
 					}
@@ -2106,8 +2124,14 @@ protected function sendFrame($connect,$json) {
 	
 	$json["last_timestamp"]=time();
 	
+	try{
+		$userid=$this->getUserIdByConnect($connect);
+	}catch(Exception $e){
+		$userid="unknown";
+	}
+	
 	$data_string=json_encode($json,JSON_UNESCAPED_UNICODE);
-	$this->log("sendFrame. final=".$data_string);
+	$this->log("sendFrame. userid=".$userid." connectid=".$connectid." json=".$data_string);
 	
 	fwrite($connect, $this->encode($data_string));
 }

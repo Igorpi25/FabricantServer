@@ -76,7 +76,7 @@ class WebsocketClient
 			
 			foreach($header_ext as $entry_key => $entry_val)
 			{
-					$header.= $entry_key . ': ' . $entry_val. "\r\n";				
+				$header.= $entry_key . ': ' . json_encode($entry_val,JSON_UNESCAPED_UNICODE). "\r\n";				
 			}			
 			
 		}

@@ -21,11 +21,11 @@ $user_id = NULL;
 /**
  * It used to Slim testing during installation the server 
  */
-$app->get('/hello/:name', function ($name) {
-		
-		//$body=file_get_contents("http://sms.ru/sms/send?api_id=A73F3F48-2F27-8D8D-D7A2-6AFF64E4F744&to=79142966292&text=".$name);
-		//echo $body;
-});
+//$app->get('/sms/:phone/:text', function ($phone,$text) {
+//		
+//		$body=file_get_contents("http://sms.ru/sms/send?api_id=A73F3F48-2F27-8D8D-D7A2-6AFF64E4F744&to=".$phone."&from=fabricant&text=".$text);
+//		echo $body;
+//});
 
 /**
  * Echoing json response to client
@@ -1409,7 +1409,7 @@ function getDiscount($basket_price,$contractor,$customer){
 	
 }
 
-//--------------Sales-----------------------
+//-----------------Sales-----------------------
 
 $app->post('/sales/create', 'authenticate', function () use ($app)  {
 	
@@ -1633,7 +1633,7 @@ $app->post('/sales/update', 'authenticate', function () use ($app)  {
 		$response['message'] = $e->getMessage();
 		$response['success'] = 0;
 		
-		echoResponse(500, $response);		
+		echoResponse(200, $response);		
 	}
 	
 

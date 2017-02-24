@@ -878,7 +878,7 @@ class DbHandlerProfile extends DbHandler{
 				
 				$result=array();
 				
-				while($stmt->fetch()){
+				if($stmt->fetch()){
 					$res=array();
 					
 					$res["id"]=$id;
