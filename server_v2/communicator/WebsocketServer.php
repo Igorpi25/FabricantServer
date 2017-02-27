@@ -16,6 +16,8 @@ define("TRANSPORT_TEXT",1);
 define("TRANSPORT_MAP",2);
 define("TRANSPORT_PROFILE",3);
 define("TRANSPORT_FABRICANT",4);
+define("TRANSPORT_MONITOR",5);
+define("TRANSPORT_SESSION",6);
 
 //------------------Map message constants ------------------------
 define("OUTGOING_START_BROADCAST", 1);
@@ -33,6 +35,19 @@ define("RECIEVER_TYPE_GROUP",3);
 define("RECIEVER_TYPE_ALL",4);
 
 define("RECIEVER_RADIUS_MAX",300000);//In 300000 km radius
+
+//-------------------Monitor------------------------------
+
+define("OUTGOING_STATE", 1);
+define("OUTGOING_LOG", 2);
+
+define("INCOMING_STATE_REQUEST", 1);
+
+//-------------------Session------------------------------
+
+define("INCOMING_LOGIN", 1);
+
+define("OUTGOING_LOGIN_DENIED", 1);
 
 //-----------------Profile message constants (надо снизу перевести вот сюда )-----------------
 define("OUTGOING_USERS_DELTA", 1);
@@ -87,7 +102,6 @@ define("SALE_TYPE_SALE", 4);
 define("SALE_TYPE_DISCOUNT", 5);
 define("SALE_TYPE_INSTALLMENT", 6);
 
-
 //-------------------Console-----------------------------------------
 
 define("CONSOLE_OPERATION_USER_CHANGED", 0);
@@ -98,14 +112,16 @@ define("CONSOLE_OPERATION_SALE", 4);
 define("CONSOLE_OPERATION_GROUP_CHANGED", 5);
 define("CONSOLE_OPERATION_PRODUCT_CHANGED", 6);
 
-
-
 class WebsocketServer {
 
 public $map_userid_connect=array();//HashMap key : userid, value: connect
 public $map_connectid_userid=array();//HashMap key : connectid, value: userid ($connectid=getIdByConnect($connect))
 public $map_connectid_framecount=array();//HashMap key : connectid, sent frames count
 public $connects=array();
+
+public $connects_incognito=array();
+public $map_connectid_connect_incognito=array();
+public $session_ping_connectid=array();
 
 public $recievers=array();
 
@@ -163,7 +179,7 @@ public function Start(){
 		
 	while (true) {
 	    //формируем массив прослушиваемых сокетов:
-	    $read = $this->connects;
+	    $read = array_merge($this->connects,$this->connects_incognito);
 	    $read []= $socket;
 	    $write = $except = null;
 	
@@ -180,26 +196,32 @@ public function Start(){
 					
 					$this->ProcessConsoleOperation($connect,$info);
 					
-				}else{//Обычный пользователь
+				}else if(isset($info["userid"]) && isset($info["last_timestamp"])){//Обычный пользователь
 									
 					$userid=intval($info["userid"]);
 					$last_timestamp=$info["last_timestamp"];
 					
-					//если есть другое соединение этого userid, то удаляем его и закрываем соккет
-					if( array_key_exists(strval($userid), $this->map_userid_connect) ){
-						$prev_connect=$this->getConnectByUserId($userid);
+					//Если есть другой connect с таким же userid
+					if($this->isUserIdHasConnect($userid)){
 						
-						$this->onClose($prev_connect);//вызываем пользовательский сценарий
-						$this->removeConnect($prev_connect);
-						stream_socket_shutdown($prev_connect, STREAM_SHUT_RDWR );//закрываем соккет и запрещаем прием и отдачу данных
-											
-						$this->log("Connect. Previous connection removed. connectid=".$this->getIdByConnect($prev_connect).", userid=".$userid);				
-					}
+						$this->log("Connect. Accepted. connectid=".$this->getIdByConnect($connect).", userid=".$userid." already exists with connectid=".$this->getIdByConnect($this->getConnectByUserId($userid)).", last_timestamp=".$last_timestamp);
+						$this->putConnectIncognito($connect);
+						
+						//Отправляем проверочный пинг
+						$this->sendPing($this->getConnectByUserId($userid),strval($this->getIdByConnect($connect)));
+						
+					}else{					
+						
+						$this->log("Connect. Accepted. connectid=".$this->getIdByConnect($connect).", userid=".$userid.", last_timestamp=".$last_timestamp);
+						$this->putConnect($connect,$userid);						
+						$this->onOpen($connect, $info);//вызываем пользовательский сценарий						
+					}	
+				
+				}else{ //Инкогнито
+				
+					$this->log("Connect. Accepted. connectid=".$this->getIdByConnect($connect).", userid = incognito");
+					$this->putConnectIncognito($connect);
 					
-					$this->log("Connect. Accepted. connectid=".$this->getIdByConnect($connect).", userid=".$userid.", last_timestamp=".$last_timestamp);
-					$this->putConnect($connect,$userid);
-					
-					$this->onOpen($connect, $info);//вызываем пользовательский сценарий
 				}
 	        }
 	        unset($read[ array_search($socket, $read) ]);
@@ -214,14 +236,20 @@ public function Start(){
 				
 				$this->onClose($connect);//вызываем пользовательский сценарий
 				
-				$this->removeConnect($connect);
+				if($this->isConnectIncognito($connect)){
+					$this->removeConnectIncognito($connect);
+				}else if(in_array($connect,$this->connects)){
+					$this->removeConnect($connect);
+				}
 				
 				fclose($connect);
 	            
 	            continue;
 	        }
+			
+			$this->log("DataRead. connectid=".$this->getIdByConnect($connect));
 	
-	        $this->OnMessage($connect,$this->connects, $data);
+	        $this->OnMessage($connect,array_merge($this->connects,$this->connects_incognito), $data);
 						
 	    }
 	}
@@ -242,7 +270,184 @@ public function Stop(){
         	$this->log("Stop. Pid-file not found. pid=".$pid);
         }
 }
-     
+
+//--------------------Функции протокола Session ---------------------
+
+protected function putConnectIncognito($connect) {
+	$connectid=$this->getIdByConnect($connect);
+	$this->log("putConnectIncognito. connectid=".$connectid);
+	array_push($this->connects_incognito,$connect);
+	$this->map_connectid_connect_incognito[strval($connectid)]=$connect;
+	
+	
+	$this->sendFrame($connect, json_decode('{"transport":"100","value":"Connected to fabricant-server incognito"}',true));
+}
+
+protected function removeConnectIncognito($connect) {
+	
+	$connectid=$this->getIdByConnect($connect);
+	$this->log("removeConnectIncognito. connectid=".$connectid);
+	unset($this->map_connectid_connect_incognito[strval($connectid)]);
+	
+	unset($this->connects_incognito[array_search($connect, $this->connects_incognito)]);
+}
+
+protected function getConnectIncognitoById($connectid) {
+	return $this->map_connectid_connect_incognito[strval($connectid)];
+}
+
+protected function isConnectIncognito($connect) {
+	return in_array($connect,$this->connects_incognito);
+}
+
+protected function isConnectIdIncognito($connectid) {
+	if(!array_key_exists(strval($connectid),$this->map_connectid_connect_incognito))return false;
+	
+	$connect=$this->getConnectIncognitoById($connectid);
+	return in_array($connect,$this->connects_incognito);
+}
+
+protected function outgoingLoginDenied($connect){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_SESSION;
+	$json["type"]=OUTGOING_LOGIN_DENIED;
+	$json["title"]="Обнаружено другое активное соединение";
+	$json["text"]="Другое устройство использует этот аккаунт для входа в Фабрикант. Одновременно с одного аккаунта может быть только одно активное устройство. \n Если у вас есть другое устройство с этим аккаунтом, то вам нужно его закрыть, прежде чем использовать на этом устройстве. \n Если у вас нет других устройств с этим аккаунтом, то сообщите в техподдержку Фабриканта";
+	
+	$this->sendFrame($connect, $json);		
+}
+
+protected function ProcessMessageSession($sender,$connects,$json) {
+	
+	$this->log("ProcessMessageSession. Sender.connectId=".$this->getIdByConnect($sender)." incognito, json=".json_encode($json));
+		
+	switch($json["type"]){
+		case INCOMING_LOGIN :
+			
+			$requested_userid=$json["userid"];
+			$last_timestamp=$json["last_timestamp"];
+			
+			//Если user балуется, пытаясь залогиниться будучи залогиненным
+			if($this->isConnectHasUserId($sender)){
+				return;
+			}
+			
+			//Если connect инкогнито
+			if($this->isConnectIncognito($sender)){
+				
+				if($this->isUserIdHasConnect($requested_userid)){//Если есть другой connect с таким же userid
+					//Отправляем проверочный пинг
+					$this->sendPing($this->getConnectByUserId($requested_userid),strval($this->getIdByConnect($sender)));
+					return;
+				}else{
+				
+					$this->log("Connect. Accepted by SESSION_LOGIN. connectid=".$this->getIdByConnect($sender).", userid=".$requested_userid.", last_timestamp=".$last_timestamp);
+					
+					$this->removeConnectIncognito($sender);
+					$this->putConnect($sender,$requested_userid);					
+					$this->onOpen($sender, $json);//вызываем пользовательский сценарий					
+					return;
+				}				
+					
+			}
+			
+			
+		break;			
+		
+	}
+	
+}
+
+//--------------------Функции протокола Monitor ---------------------
+
+protected function getMonitors(){
+	$ids=array();
+	$ids[]=strval(2);
+	$ids[]=strval(1);
+	$ids[]=strval(3);
+	
+	return $ids;
+}
+
+protected function isUserMonitor($userid){
+	$monitors=$this->getMonitors();
+	return in_array(strval($userid), $monitors);
+}
+
+protected function getState(){
+	
+	$connects = array();	
+	foreach($this->connects as $connect){
+		$item=array();
+		$item["connect"]=intval($connect);
+		$connects[]=$item;
+	}
+	
+	$map_userid_connect = array();	
+	foreach($this->map_userid_connect as $userid => $connect){
+		$item=array();
+		$item["userid"]=$userid;
+		$item["connect"]=intval($connect);
+		$map_userid_connect[]=$item;
+	}
+	
+	$map_connectid_userid = array();	
+	foreach($this->map_connectid_userid as $connectid => $userid){
+		$item=array();
+		$item["connectid"]=$connectid;
+		$item["userid"]=$userid;
+		$map_connectid_userid[]=$item;
+	}
+	
+	$map_connectid_framecount = array();	
+	foreach($this->map_connectid_framecount as $connectid => $framecount){
+		$item=array();
+		$item["connectid"]=$connectid;
+		$item["framecount"]=$framecount;
+		$map_connectid_framecount[]=$item;
+	}
+	
+	
+	$state=array();
+	$state["connects"]=$connects;
+	$state["map_userid_connect"]=$map_userid_connect;
+	$state["map_connectid_userid"]=$map_connectid_userid;
+	$state["map_connectid_framecount"]=$map_connectid_framecount;
+	
+	return $state;
+}
+
+protected function outgoingState($connect){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_MONITOR;
+	$json["type"]=OUTGOING_STATE;
+	$json["state"]= $this->getState();
+	
+	$this->sendFrame($connect, $json);		
+}
+
+protected function ProcessMessageMonitor($sender,$connects,$json) {
+	
+	$this->log("ProcessMessageMonitor. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json));
+		
+	switch($json["type"]){
+		case INCOMING_STATE_REQUEST :	
+			
+			$userid=$this->getUserIdByConnect($sender);
+			
+			if($this->isUserMonitor($userid)){
+				$this->outgoingState($sender);
+			}
+			
+		break;			
+		
+	}
+	
+}
+
+
 //--------------------Функции протокола Fabricant ---------------------
 
 protected function outgoingOrder($connect,$order){
@@ -1929,7 +2134,11 @@ protected function getConnectByUserId($userid) {
 
 protected function getUserIdByConnect($connect) {
 	$connectid=$this->getIdByConnect($connect);
-	return $this->map_connectid_userid[strval($connectid)];
+	try{
+		return $this->map_connectid_userid[strval($connectid)];
+	}catch(Exception $e){
+		return 0;
+	}
 }
 
 protected function putConnect($connect,$userid) {
@@ -1956,6 +2165,15 @@ protected function removeConnect($connect) {
 	unset($this->connects[array_search($connect, $this->connects)]);
 }
 
+protected function isConnectHasUserId($connect) {
+	$connectid=$this->getIdByConnect($connect);
+	return array_key_exists(strval($connectid),$this->map_connectid_userid);
+}
+
+protected function isUserIdHasConnect($userid) {
+	return array_key_exists(strval($userid),$this->map_userid_connect);
+}
+
 //---------------------Служебные-------------------------
 
 public function log($message){
@@ -1970,9 +2188,6 @@ public function log($message){
   
 protected function onOpen($connect, $info) {
 		
-	//Начало транзакции дельты
-	$this->sendFrame($connect, json_decode('{"transport":"begin"}',true));
-	
 	//Начало транзакции дельты
 	$this->sendFrame($connect, json_decode('{"transaction":"begin"}',true));
 	
@@ -2054,6 +2269,12 @@ protected function onOpen($connect, $info) {
 	//Завершение транзакции дельты
 	$this->sendFrame($connect, json_decode('{"transaction":"end"}',true));
 	
+	//---------Moniotor------------------------
+	
+	if($this->isUserMonitor($userid)){
+		$this->outgoingState($connect);
+	}
+	
 }
 
 protected function onClose($connect) {
@@ -2065,14 +2286,51 @@ protected function onClose($connect) {
 }
 
 protected function onMessage($sender,$connects,$data) {
-
+	
+	//$this->log("onMessage. senderid=".$this->getIdByConnect($sender));
+	
 	$decoded_data=$this->decode($data);
 	
+	$this->log("onMessage. senderid=".$this->getIdByConnect($sender)." decoded_data=".json_encode($decoded_data,JSON_UNESCAPED_UNICODE));
+	
+	if($this->isConnectHasUserId($sender)){
+		$userid=$this->getUserIdByConnect($sender);
+	}else if($this->isConnectIncognito($sender)){		
+		$userid="incognito";
+	}else{
+		$userid="unknown";
+	}
+	
 	if($decoded_data['type']=='ping'){
-		$this->log("incomingPing. payload=".$decoded_data['payload']." connectId=".$this->getIdByConnect($sender)." userId=".$this->getUserIdByConnect($sender)." timestamp=".time());
+		$this->log("incomingPing. payload=".$decoded_data['payload']." connectId=".$this->getIdByConnect($sender)." userId=".$userid." timestamp=".time());
 		
+		$this->log("outgoingPong. payload=".$decoded_data['payload']." connectId=".$this->getIdByConnect($sender)." userId=".$userid." timestamp=".time());
 		fwrite($sender, $this->encode($decoded_data['payload'],'pong'));
-		$this->log("outgoingPong. payload=".$decoded_data['payload']." connectId=".$this->getIdByConnect($sender)." userId=".$this->getUserIdByConnect($sender)." timestamp=".time());
+		
+		
+		return;
+	}
+	
+	if($decoded_data['type']=='pong'){
+		
+		$this->log("incomingPong. payload=".$decoded_data['payload']." connectId=".$this->getIdByConnect($sender)." userId=".$userid." timestamp=".time());
+		
+		//Если pong получен от правильного connect-а
+		if($this->session_ping_connectid[$decoded_data['payload']]==$this->getIdByConnect($sender)){
+			
+			
+			unset($this->session_ping_connectid[$decoded_data['payload']]);
+			
+			
+			//Получен проверочный понг SESSION_LOGIN, т.е. уже существующий user активен
+			if($this->isConnectIdIncognito($decoded_data['payload'])){
+				
+				$this->outgoingLoginDenied($this->getConnectIncognitoById($decoded_data['payload']));
+				
+				//отключаем нового инкогнито user, который отправил запрос на логин
+				//$this->removeConnectIncognito($this->getConnectIncognitoById($decoded_data['payload']));
+			}
+		}
 		
 		return;
 	}
@@ -2107,6 +2365,17 @@ protected function onMessage($sender,$connects,$data) {
 				$this->ProcessMessageFabricant($sender,$connects,$json);
 				break;
 			}
+			
+			case TRANSPORT_MONITOR:{
+				$this->ProcessMessageMonitor($sender,$connects,$json);
+				break;
+			}
+			
+			case TRANSPORT_SESSION:{
+				$this->ProcessMessageSession($sender,$connects,$json);
+				break;
+			}
+			
 		}
 		
 	}
@@ -2124,9 +2393,11 @@ protected function sendFrame($connect,$json) {
 	
 	$json["last_timestamp"]=time();
 	
-	try{
+	if($this->isConnectHasUserId($connect)){
 		$userid=$this->getUserIdByConnect($connect);
-	}catch(Exception $e){
+	}else if($this->isConnectIncognito($connect)){		
+		$userid="incognito";
+	}else{
 		$userid="unknown";
 	}
 	
@@ -2134,6 +2405,25 @@ protected function sendFrame($connect,$json) {
 	$this->log("sendFrame. userid=".$userid." connectid=".$connectid." json=".$data_string);
 	
 	fwrite($connect, $this->encode($data_string));
+}
+
+protected function sendPing($connect,$payload) {
+	
+	$connectid=$this->getIdByConnect($connect);
+	
+	if($this->isConnectHasUserId($connect)){
+		$userid=$this->getUserIdByConnect($connect);
+	}else if($this->isConnectIncognito($connect)){		
+		$userid="incognito";
+	}else{
+		$userid="unknown";
+	}
+	
+	$this->log("sendPing. userid=".$userid." connectid=".$connectid." payload=".$payload);
+	
+	$this->session_ping_connectid[$payload]=$connectid;
+	
+	fwrite($connect, $this->encode($payload,"ping"));
 }
 
 function handshake($connect){
@@ -2266,11 +2556,11 @@ function decode($data){
     $isMasked = ($secondByteBinary[0] == '1') ? true : false;
     $payloadLength = ord($data[1]) & 127;
 
-	//$this->log("decode. opcode=".$opcode);
+	//$this->log("decode. opcode=".$opcode." isMasked=".$isMasked);
 	
 	
 	
-    //// unmasked frame is received:
+    // unmasked frame is received:
     //if (!$isMasked) {
     //    return array('type' => '', 'payload' => '', 'error' => 'protocol error (1002)');
     //}
