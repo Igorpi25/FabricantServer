@@ -628,7 +628,7 @@ $app->post('/group_panorama/upload/:group_id', 'authenticate', function($group_i
    	      	
 });
 
-//------------------Group-------------------------------
+//------------------Contractor-------------------------------
 
 //------------------Customer-------------------------------
 
@@ -721,7 +721,7 @@ $app->post('/search_contact', 'authenticate', function () use ($app)  {
 
 });	
 
-//-------------Orders-----------------------
+//-----------------Orders-----------------------
 
 //Временная url для теста get all oreders of contractor
 $app->get('/orders/:contractorid', function ($contractorid){
@@ -756,7 +756,11 @@ $app->post('/orders/create', 'authenticate', function () use ($app)  {
 		
 	$response = array();
 	
-	try{	
+	$record=array();
+	$record["make_record_logs"]=array();
+	$record["make_record_logs"][]="empty";
+	
+	//try{	
 		
 		$json_order = $app->request->post('order');		
 		$order=json_decode($json_order,true);
@@ -780,13 +784,13 @@ $app->post('/orders/create', 'authenticate', function () use ($app)  {
 		$response['success'] = 1;
 		$response['make_record_logs'] = "make_record_logs: ".implode (" , ",$record["make_record_logs"]);
         
-	} catch (Exception $e) {
+	/*} catch (Exception $e) {
         
 		$response['error'] = true;
 		$response['message'] = $e->getMessage();
 		$response['success'] = 0;
 		$response['make_record_logs'] = "make_record_logs: ".implode (" , ",$record["make_record_logs"]);
-	}
+	}*/
 	
 	echoResponse(200, $response);
 
@@ -1069,6 +1073,64 @@ $app->post('/orders/make_paid', 'authenticate', function () use ($app)  {
 
 });
 
+$app->post('/orders/hide', 'authenticate', function () use ($app)  {
+	
+	// check for required params
+    verifyRequiredParams(array('orderid'));
+	
+	
+	$db_profile = new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+	
+	global $user_id;	
+		
+	$response = array();
+	
+	try{
+		
+		$orderid = $app->request->post('orderid');
+		
+		$order=$db_fabricant->getOrderById($orderid);
+		
+		if( $user_id!=1 && $user_id!=3 ){
+			throw new Exception('You have no permission. Only Fabricant Admin has permission');			
+		}
+		
+		$record=json_decode($order["record"],true);				
+		$user=$db_profile->getUserById($user_id);
+		
+		$record["hideUserId"]=$user_id;
+		$record["hideUserName"]=$user["name"];
+		$record["hideComment"]="no comment";
+		$record["hidden"]=true;
+		
+		//Console command
+		$json_header=array();
+		$json_header["console"]="v2/index/orders/hide";
+		$json_header["operation"]=M_CONSOLE_OPERATION_ORDER;
+		$json_header["order_operationid"]=M_ORDEROPERATION_HIDE;
+		$json_header["senderid"]=$user_id;
+		$json_header["record"]=json_encode($record,JSON_UNESCAPED_UNICODE);
+		$console_response=consoleCommand($json_header);
+		
+		$response['consoleCommand_hide_order'] = $console_response["message"];
+		
+		$response['error'] = false;
+		$response['message'] = "Order has been hidden";
+		$response['order'] = $db_fabricant->getOrderById($orderid);
+		$response['success'] = 1;
+        
+	} catch (Exception $e) {
+        
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+	}
+	
+	echoResponse(200, $response);
+
+});
+
 //-------------Orders Utils------------------------
 
 function makeOrderRecord($order){
@@ -1086,7 +1148,7 @@ function makeOrderRecord($order){
 		if($contractor["type"]!=0){
 			throw new Exception('Contractor type is incorrect');
 		}
-		if($contractor["status"]!=1){
+		if($contractor["status"]==4){
 			throw new Exception('Contractor status is incorrect');
 		}
 		
@@ -1119,22 +1181,23 @@ function makeOrderRecord($order){
 		$logs[]="Installment";		
 		$installment=getInstallment($order,$contractor);		
 		$price_installment_name=null;
-		if( ($installment!=null) && (groupHasTag($installment["tag_customer"],$customer)) ){
+		if( ($installment!=null) && ( (isset($installment["for_all_customers"]) && $installment["for_all_customers"]==true) || groupHasTag($installment["tag_customer"],$customer) ) ){
 			$price_installment_name=$installment["price_name"];
 		}
 		
 		$logs[]="price_installment_name=".$price_installment_name;
 		
-		//Basket	
+		//Basket подготовка корзины: чистим ее от всякого неодеквата и применяем rate-скидки к продуктам
 		$logs[]="Basket";		
 		$items=$order["items"];
 		if(count($items)<1){
 			throw new Exception('items are not found');
 		}
 		$basket=array();
+		$basket_products=array();
+		
 		$basket_price=0;
 		foreach($items as $productid=>$count){
-				$logs[]="productid=".$productid." count=".$count;
 				$product=$db_fabricant->getProductById($productid);
 				
 				if(!isset($product))continue;//Product id not found
@@ -1153,35 +1216,96 @@ function makeOrderRecord($order){
 				$item["name"]=$product["name"];
 				$item["count"]=$count;
 				$item["amount"]=$item["price"]*$count;
-				$logs[]="amount=".$item["amount"];
 				
-				$sale=getProductSale($product,$contractor,$customer);
+				$sale=getProductSale($product,$contractor,$customer,$installment);
 				if(isset($sale)){
-					$item["sale"]=$sale;	
 					
-					$save_value=$product["price"]*$product["count"]*$salerate["rate"];	
+					//Вычитаемая сумма
+					$save_value=ceil(round($item["amount"]*(-1.0+$sale["rate"]),4));	
 					
-					$item["amount"]-=$save_value;
-					$logs[]="sale=".json_encode($sale,JSON_UNESCAPED_UNICODE);
+					//Сохраняем информацию о скидке
+					$sale_info=array();
+					$sale_info["id"]=$sale["id"];
+					$sale_info["name"]=$sale["name"];
+					$sale_info["rate"]=$sale["rate"];
+					$sale_info["value"]=$save_value;
+					$sale_info["cash_only"]=$sale["cash_only"];
+					$sale_info["for_all_customers"]=$sale["for_all_customers"];
+					
+					$item["amount"]+=$save_value;
+					$item["sale"]=$sale_info;	
+					
 				}
 				
 				$basket_price+=$item["amount"];
 				
-				$basket[]=$item;				
-		}		
+				
+				$basket[]=$item;	
+				
+				//Это нужно для определения дисконтов
+				$item["product"]=$product;
+				$basket_products[]=$item;				
+		}
 		
 		//Costs		
-		$logs[]="Costs";
 		$costs=array();
 		$costs["itemsAmount"]=$basket_price;
 		$total_cost=$basket_price;
 		
-		//Discount
-		$logs[]="Discount";
-		$discount=getDiscount($basket_price,$contractor,$customer);		
-		if(isset($discount)){
-			$costs["discount"]=$discount;
-			$total_cost+=$discount["value"];
+		
+		$logs[]="Discounts";
+		
+		//Берем все дисконты сортированные по rate
+		$discounts=getDiscounts($contractor,$customer,$installment);
+
+		foreach($discounts as $discount){
+			
+			if(count($basket_products)==0)break;
+			
+			$discount_products=array();
+			$discount_products_summ=0;
+			$discount_products_ids=array();
+			foreach($basket_products as $item){
+				if(productHasDiscount($item["product"],$discount)){
+					
+					$item["productHasDiscount"]=productHasDiscount($item["product"],$discount);
+					$item["isDiscountForAllProducts"]=isDiscountForAllProducts($discount);
+					$item["productHasTag"]=productHasTag($discount["tag_product"],$product);
+					
+					$discount_products[]=$item;
+					$discount_products_ids[]=$item["productid"];
+					$discount_products_summ+=$item["amount"];
+				}
+			}
+			
+			if($discount_products_summ>=$discount["min_summ"] && $discount_products_summ<$discount["max_summ"]){
+				
+				//Записываем иформацию о дисконте
+				$costs_discounts_item=array();
+				$costs_discounts_item["id"]=$discount["id"];
+				$costs_discounts_item["rate"]=$discount["rate"];				
+				$costs_discounts_item["value"]=ceil(round($discount_products_summ*(-1.0+$discount["rate"]),4));		
+				$costs_discounts_item["value_float"]=$discount_products_summ*(-1.0+$discount["rate"]);		
+				$costs_discounts_item["name"]=$discount["name"];
+				$costs_discounts_item["products_count"]=count($discount_products_ids);
+				$costs_discounts_item["products_amount"]=$discount_products_summ;
+				$costs_discounts_item["min_summ"]=$discount["min_summ"];
+				$costs_discounts_item["max_summ"]=$discount["max_summ"];
+				$costs_discounts_item["products"]=$discount_products_ids;
+				$costs_discounts_item["cash_only"]=$discount["cash_only"];
+				$costs_discounts_item["for_all_customers"]=$discount["for_all_customers"];
+				$costs_discounts_item["for_all_products"]=$discount["for_all_products"];
+				
+				if(!isset($costs["discounts"]))$costs["discounts"]=array();
+				
+				//Вычитаем сумму дисконта от общей стоимости
+				$costs["discounts"][]=$costs_discounts_item;
+				$total_cost+=$costs_discounts_item["value"];
+								
+				//Убираем из корзины продукты к которым был применен дисконт
+				$basket_products=array_udiff($basket_products,$discount_products,'compareProductsId');
+				
+			}
 		}
 		
 		
@@ -1213,8 +1337,6 @@ function makeOrderRecord($order){
 		if(isset($order["comment"])){		
 			$record["comment"]=$order["comment"];
 		}
-		
-		$record["make_record_logs"]=$logs;
 		
 		return $record;
 }
@@ -1320,35 +1442,7 @@ function getInstallment($order,$contractor){
 	return null;
 }
 
-function groupHasTag($tag,$group){
-	
-	
-	if(!isset($group["info"]))
-		return false;
-		
-	$group_info=json_decode($group["info"],true);
-	
-	if(!isset($group_info["tags"]))
-		return false;
-		
-	return in_array($tag, $group_info["tags"]);
-}
-
-function productHasTag($tag,$product){
-	
-	
-	if(!isset($product["info"]))
-		return false;
-		
-	$product_info=json_decode($product["info"],true);
-	
-	if(!isset($product_info["tags"]))
-		return false;
-		
-	return in_array($tag, $product_info["tags"]);
-}
-
-function getProductSale($product,$contractor,$customer){
+function getProductSale($product,$contractor,$customer,$installment){
 	
 	
 	if(!isset($contractor["info"]))
@@ -1365,7 +1459,10 @@ function getProductSale($product,$contractor,$customer){
 	$salerate=null;
 		
 	foreach($sales as $sale){
-		if( ($sale["type"]==4) && isset($sale["tag_customer"]) && groupHasTag($sale["tag_customer"],$customer) && productHasTag($sale["tag_product"],$product) ){
+		if( ($sale["type"]==4) && isset($sale["tag_customer"]) && ( isSaleForAllCustomers($sale) || groupHasTag($sale["tag_customer"],$customer) ) && productHasTag($sale["tag_product"],$product) ){
+			
+			//Если только за наличные и заказчик выбрал рассрочку, то далее
+			if( isSaleForCashOnly($sale) && isset($installment) )continue;
 			
 			if( ($salerate==null)||($sale["rate"]<$salerate["rate"]) ){
 				$salerate=$sale;				
@@ -1376,37 +1473,88 @@ function getProductSale($product,$contractor,$customer){
 	return $salerate;	
 }
 
-function getDiscount($basket_price,$contractor,$customer){
+function getDiscounts($contractor,$customer,$installment){
 	
+	$discounts=array();
 	
 	if(!isset($contractor["info"]))
-		return null;
+		return $discounts;
 		
 	$contractor_info=json_decode($contractor["info"],true);
 	
 	if(!isset($contractor_info["sales"]))
-		return null;
-	
-	
+		return $discounts;
+		
 	$sales=$contractor_info["sales"];
 	
-	$discount=null;
-		
 	foreach($sales as $sale){
-		if( ($sale["type"]==5) && groupHasTag($sale["tag_customer"],$customer) && ($basket_price>=$sale["min_summ"]) && ($basket_price<$sale["max_summ"])  ){
+		if( ($sale["type"]==5) && ( isSaleForAllCustomers($sale) || (isset($sale["tag_customer"]) && groupHasTag($sale["tag_customer"],$customer)) ) ){
 			
+			//Если только за наличные и заказчик выбрал рассрочку, то далее
+			if( isSaleForCashOnly($sale) && isset($installment) )continue;
 			
-			
-			if( ($discount==null)||($sale["rate"]<$discount["rate"]) ){	
-				$sale["basket_price"]=$basket_price;
-				$sale["value"]=ceil($basket_price*($sale["rate"]-1.0));			
-				$discount=$sale;		
-			}				
+			$discounts[]=$sale;
 		}
 	}
 	
-	return $discount;
+	if(usort($discounts,"compareDiscountRate")){
+		return $discounts;
+	}else{
+		throw new Exception("getDiscounts error, while usort");
+	}
+}
+
+function compareDiscountRate($a, $b){
+    return ($a['rate'] - $b['rate']);
+}
+
+function compareProductsId($a, $b){
+    return ($a['productid'] - $b['productid']);
+}
+
+//--------Boolean Functions--------------
+
+function groupHasTag($tag,$group){
 	
+	
+	if(!isset($group["info"]))
+		return false;
+		
+	$group_info=json_decode($group["info"],true);
+	
+	if(!isset($group_info["tags"]))
+		return false;
+		
+	return in_array($tag, $group_info["tags"]);
+}
+
+function productHasTag($tag,$product){
+	
+	if(!isset($product["info"]))
+		return false;
+		
+	$product_info=json_decode($product["info"],true);
+	
+	if(!isset($product_info["tags"]))
+		return false;
+		
+	return in_array($tag, $product_info["tags"]);
+}
+
+function productHasDiscount($product,$discount){
+	return isDiscountForAllProducts($discount) || ( isset($discount["tag_product"]) && productHasTag($discount["tag_product"],$product) );
+}
+
+function isSaleForCashOnly($sale){
+	return isset($sale["cash_only"]) && ($sale["cash_only"]==true);
+}
+
+function isSaleForAllCustomers($sale){
+	return (isset($sale["for_all_customers"]) && $sale["for_all_customers"]==true);
+}
+
+function isDiscountForAllProducts($discount){
+	return isset($discount["for_all_products"]) && $discount["for_all_products"]==true;
 }
 
 //-----------------Sales-----------------------
@@ -1427,12 +1575,13 @@ $app->post('/sales/create', 'authenticate', function () use ($app)  {
 		$json_header["senderid"]=$user_id;
 		
 		//Required params
-		$json_header["contractorid"] = $app->request->post('contractorid');
-		$json_header["type"] = $app->request->post('type');
+		$json_header["contractorid"] = filter_var($app->request->post('contractorid'),FILTER_VALIDATE_INT);
+		$json_header["type"] = filter_var($app->request->post('type'),FILTER_VALIDATE_INT);
 		$json_header["label"] = $app->request->post('label');
 		$json_header["name"] = $app->request->post('name');
 		$json_header["name_full"] = $app->request->post('name_full');
 		$json_header["summary"] = $app->request->post('summary');
+		$json_header["for_all_customers"] = filter_var($app->request->post('for_all_customers'),FILTER_VALIDATE_BOOLEAN);
 		
 		if(!isset($json_header["type"])){
 			throw new Exception("Sale create error. type is not found");
@@ -1442,33 +1591,48 @@ $app->post('/sales/create', 'authenticate', function () use ($app)  {
 		switch($json_header["type"]){
 			case M_SALE_TYPE_SALE:
 			
-				$json_header["rate"] = $app->request->post('rate');				
+				$json_header["rate"] = filter_var($app->request->post('rate'),FILTER_VALIDATE_FLOAT);				
 				if(!isset($json_header["rate"])){
 					throw new Exception("Sale create error. rate is not found");
+				}
+				
+				$json_header["cash_only"] = filter_var($app->request->post('cash_only'),FILTER_VALIDATE_BOOLEAN);				
+				if(!isset($json_header["cash_only"])){
+					throw new Exception("Sale create error. cash_only is not found");
 				}
 				
 				break;
 				
 			case M_SALE_TYPE_DISCOUNT:
 			
-				$json_header["rate"] = $app->request->post('rate');				
+				$json_header["rate"] = filter_var($app->request->post('rate'),FILTER_VALIDATE_FLOAT);				
 				if(!isset($json_header["rate"])){
 					throw new Exception("Sale create error. rate is not found");
 				}
-				$json_header["min_summ"] = $app->request->post('min_summ');				
+				$json_header["min_summ"] = filter_var($app->request->post('min_summ'),FILTER_VALIDATE_FLOAT);				
 				if(!isset($json_header["min_summ"])){
 					throw new Exception("Sale create error. min_summ is not found");
 				}
-				$json_header["max_summ"] = $app->request->post('max_summ');				
+				$json_header["max_summ"] = filter_var($app->request->post('max_summ'),FILTER_VALIDATE_FLOAT);				
 				if(!isset($json_header["max_summ"])){
 					throw new Exception("Sale create error. max_summ is not found");
+				}
+				
+				$json_header["cash_only"] = filter_var($app->request->post('cash_only'),FILTER_VALIDATE_BOOLEAN);				
+				if(!isset($json_header["cash_only"])){
+					throw new Exception("Sale create error. cash_only is not found");
+				}
+				
+				$json_header["for_all_products"] = filter_var($app->request->post('for_all_products'),FILTER_VALIDATE_BOOLEAN);				
+				if(!isset($json_header["for_all_products"])){
+					throw new Exception("Sale create error. for_all_products is not found");
 				}
 				
 				break;
 				
 			case M_SALE_TYPE_INSTALLMENT:
 				
-				$json_header["time_notification"] = $app->request->post('time_notification');				
+				$json_header["time_notification"] = filter_var($app->request->post('time_notification'),FILTER_VALIDATE_INT);				
 				if(!isset($json_header["time_notification"])){
 					throw new Exception("Sale create error. time_notification is not found");
 				}
@@ -1491,7 +1655,7 @@ $app->post('/sales/create', 'authenticate', function () use ($app)  {
 		$response['message'] = $e->getMessage();
 		$response['success'] = 0;
 		
-		echoResponse(500, $response);		
+		echoResponse(200, $response);		
 	}
 	
 
@@ -1513,7 +1677,7 @@ $app->post('/sales/remove', 'authenticate', function () use ($app)  {
 		$json_header["senderid"]=$user_id;
 		
 		//Required params
-		$json_header["saleid"] = $app->request->post('saleid');
+		$json_header["saleid"] = filter_var($app->request->post('saleid'),FILTER_VALIDATE_INT);
 		
 		if(!isset($json_header["saleid"])){
 			throw new Exception("Sale remove error. saleid is not found");
@@ -1534,7 +1698,7 @@ $app->post('/sales/remove', 'authenticate', function () use ($app)  {
 		$response['message'] = $e->getMessage();
 		$response['success'] = 0;
 		
-		echoResponse(500, $response);		
+		echoResponse(200, $response);		
 	}
 	
 
@@ -1558,11 +1722,12 @@ $app->post('/sales/update', 'authenticate', function () use ($app)  {
 		$json_header["senderid"]=$user_id;
 		
 		//Required params
-		$json_header["saleid"] = $app->request->post('saleid');
+		$json_header["saleid"] = filter_var($app->request->post('saleid'),FILTER_VALIDATE_INT);
 		$json_header["label"] = $app->request->post('label');
 		$json_header["name"] = $app->request->post('name');
 		$json_header["name_full"] = $app->request->post('name_full');
 		$json_header["summary"] = $app->request->post('summary');
+		$json_header["for_all_customers"] = filter_var($app->request->post('for_all_customers'),FILTER_VALIDATE_BOOLEAN);
 		
 		if(!isset($json_header["saleid"])){
 			throw new Exception("Sale update error. saleid param missing");
@@ -1582,35 +1747,50 @@ $app->post('/sales/update', 'authenticate', function () use ($app)  {
 		switch($json_header["type"]){
 			case M_SALE_TYPE_SALE:		
 			
-				$json_header["rate"] = $app->request->post('rate');				
+				$json_header["rate"] = filter_var($app->request->post('rate'),FILTER_VALIDATE_FLOAT);				
 				if(!isset($json_header["rate"])){
 					throw new Exception("Sale update error. rate is not found");
 				}		
+				
+				$json_header["cash_only"] = filter_var($app->request->post('cash_only'),FILTER_VALIDATE_BOOLEAN);				
+				if(!isset($json_header["cash_only"])){
+					throw new Exception("Sale update error. cash_only is not found");
+				}	
 	
 				break;
 				
 			case M_SALE_TYPE_DISCOUNT:		
 			
-				$json_header["rate"] = $app->request->post('rate');				
+				$json_header["rate"] = filter_var($app->request->post('rate'),FILTER_VALIDATE_FLOAT);			
 				if(!isset($json_header["rate"])){
 					throw new Exception("Sale update error. rate is not found");
 				}		
 
-				$json_header["min_summ"] = $app->request->post('min_summ');				
+				$json_header["min_summ"] = filter_var($app->request->post('min_summ'),FILTER_VALIDATE_FLOAT);				
 				if(!isset($json_header["min_summ"])){
 					throw new Exception("Sale update error. min_summ is not found");
 				}	
 				
-				$json_header["max_summ"] = $app->request->post('max_summ');				
+				$json_header["max_summ"] = filter_var($app->request->post('max_summ'),FILTER_VALIDATE_FLOAT);				
 				if(!isset($json_header["max_summ"])){
 					throw new Exception("Sale update error. max_summ is not found");
-				}					
+				}	
+
+				$json_header["cash_only"] = filter_var($app->request->post('cash_only'),FILTER_VALIDATE_BOOLEAN);			
+				if(!isset($json_header["cash_only"])){
+					throw new Exception("Sale update error. cash_only is not found");
+				}		
+
+				$json_header["for_all_products"] = filter_var($app->request->post('for_all_products'),FILTER_VALIDATE_BOOLEAN);				
+				if(!isset($json_header["for_all_products"])){
+					throw new Exception("Sale update error. for_all_products is not found");
+				}
 								
 				break;
 				
 			case M_SALE_TYPE_INSTALLMENT:	
 			
-				$json_header["time_notification"] = $app->request->post('time_notification');				
+				$json_header["time_notification"] = filter_var($app->request->post('time_notification'),FILTER_VALIDATE_INT);				
 				if(!isset($json_header["time_notification"])){
 					throw new Exception("Sale update error. time_notification is not found");
 				}		
@@ -1658,8 +1838,8 @@ $app->post('/sales/add_to_customer', 'authenticate', function () use ($app)  {
 		$json_header["senderid"]=$user_id;
 		
 		//Required params
-		$json_header["saleid"] = $app->request->post('saleid');
-		$json_header["customerid"] = $app->request->post('customerid');
+		$json_header["saleid"] = filter_var($app->request->post('saleid'),FILTER_VALIDATE_INT);
+		$json_header["customerid"] = filter_var($app->request->post('customerid'),FILTER_VALIDATE_INT);
 		
 		$console_response=consoleCommand($json_header);
 		
@@ -1676,7 +1856,7 @@ $app->post('/sales/add_to_customer', 'authenticate', function () use ($app)  {
 		$response['message'] = $e->getMessage();
 		$response['success'] = 0;
 		
-		echoResponse(500, $response);		
+		echoResponse(200, $response);		
 	}
 });
 
@@ -1697,8 +1877,8 @@ $app->post('/sales/remove_from_customer', 'authenticate', function () use ($app)
 		$json_header["senderid"]=$user_id;
 		
 		//Required params
-		$json_header["saleid"] = $app->request->post('saleid');
-		$json_header["customerid"] = $app->request->post('customerid');
+		$json_header["saleid"] = filter_var($app->request->post('saleid'),FILTER_VALIDATE_INT);
+		$json_header["customerid"] = filter_var($app->request->post('customerid'),FILTER_VALIDATE_INT);
 		
 		$console_response=consoleCommand($json_header);
 		
@@ -1715,7 +1895,7 @@ $app->post('/sales/remove_from_customer', 'authenticate', function () use ($app)
 		$response['message'] = $e->getMessage();
 		$response['success'] = 0;
 		
-		echoResponse(500, $response);		
+		echoResponse(200, $response);		
 	}
 });
 
@@ -1740,6 +1920,7 @@ define("M_ORDEROPERATION_ACCEPT", 2);
 define("M_ORDEROPERATION_REMOVE", 3);
 define("M_ORDEROPERATION_TRANSFER", 4);
 define("M_ORDEROPERATION_MAKE_PAID", 5);
+define("M_ORDEROPERATION_HIDE", 6);
 
 define("M_SALE_OPERATION_CREATE", 0);
 define("M_SALE_OPERATION_REMOVE", 1);

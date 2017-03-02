@@ -175,6 +175,11 @@ $app->post('/login', function() use ($app) {
  */
 $app->post('/groups/dt/:id', 'authenticate', function($id) use ($app) {
 	// listing all groups
+	
+	global $user_id;
+	
+	
+	
 	$db = new DbHandlerProfile();
 	$groups = $db->getGroupsOfUser($id);
 	$response = array();
@@ -544,6 +549,29 @@ $app->get('/contractors', 'authenticate', function() use ($app) {
 	echoResponse(200, $response);
 });
 /**
+ * Listing all contractors
+ * method POST
+ * url /contractors
+ */
+$app->post('/contractors/all/dt', 'authenticate', function() use ($app) {
+	// listing all contractor
+	$db = new DbHandlerProfile();
+	$type = 0;
+	$result = $db->getAllGroupsWeb($type);
+	$response = array();
+	if ($result != NULL || empty($result)) {
+		$response["draw"] = intval(1);
+		$response["recordsTotal"] = intval(count($result));
+		$response["recordsFiltered"] = intval(count($result));
+		$response["data"] = $result;
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to get groups of user. Please try again";
+	}
+	echoResponse(200, $response);
+});
+/**
  * Creating contractor
  * method POST
  * url /contractor
@@ -551,7 +579,7 @@ $app->get('/contractors', 'authenticate', function() use ($app) {
 $app->post('/contractors', 'authenticate', function() use ($app) {
 	// creating new contracotor
 	$db = new DbHandlerProfile();
-	$status = 1;
+	$status = 0;
 	$type = 0;
 	$new_id = $db->createGroupWeb("", $status, $type, "");
 	$response = array();
@@ -620,6 +648,114 @@ $app->delete('/contractors/:id', 'authenticate', function($id) use ($app) {
 	echoResponse(200, $response);
 });
 
+//---------Contractor status operations------------------------
+
+$app->post('/contractors/publish/:id',  'authenticate', function($id) use ($app) {
+	
+	global $user_id;	
+	$db = new DbHandlerProfile();		
+	permissionFabricantAdmin($user_id);
+	
+	
+	try{
+		
+		if(!$db->isContractor($id)){
+			throw new Exception("Group is not contractor");
+		}
+		
+		$status=1;	
+	
+		if(!$db->changeGroupStatus($status, $id)){
+			throw new Exception("Error when change group status query");
+		}
+		
+		consoleCommandGroupUpdated($id);
+		
+		$response['error'] = false;
+		$response['message'] = "Group status changed";
+		$response['group'] = $db->getGroupById($id)[0];
+		$response['success'] = 1;
+		
+	} catch (Exception $e) {
+	
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+	}
+	
+	echoResponse(200, $response);
+});
+
+$app->post('/contractors/remove/:id',  'authenticate', function($id) use ($app) {
+	
+	global $user_id;	
+	$db = new DbHandlerProfile();		
+	permissionFabricantAdmin($user_id);
+	
+	try{
+	
+		if(!$db->isContractor($id)){
+			throw new Exception("Group is not contractor");
+		}
+		
+		$status=4;	
+	
+		if(!$db->changeGroupStatus($status, $id)){
+			throw new Exception("Mysql error when change group status");
+		}
+		
+		consoleCommandGroupUpdated($id);
+		
+		$response['error'] = false;
+		$response['message'] = "Group status changed";
+		$response['group'] = $db->getGroupById($id)[0];
+		$response['success'] = 1;
+		
+	} catch (Exception $e) {
+	
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+	}
+	
+	echoResponse(200, $response);
+});
+
+$app->post('/contractors/make_processing/:id',  'authenticate', function($id) use ($app) {
+	
+	global $user_id;	
+	$db = new DbHandlerProfile();		
+	permissionFabricantAdmin($user_id);
+	
+	try{
+		
+		if(!$db->isContractor($id)){
+			throw new Exception("Group is not contractor");
+		}
+		
+		$status=0;	
+	
+		if(!$db->changeGroupStatus($status, $id)){
+			throw new Exception("Mysql error when change group status");
+		}
+		
+		consoleCommandGroupUpdated($id);
+		
+		$response['error'] = false;
+		$response['message'] = "Group status changed";
+		$response['group'] = $db->getGroupById($id)[0];
+		$response['success'] = 1;
+		
+	} catch (Exception $e) {
+	
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+	}
+	
+	echoResponse(200, $response);
+});
+
 //--------------------Customers----------------------------
 
 /**
@@ -640,6 +776,29 @@ $app->get('/customers', function() use ($app) {
 	else {
 		$response["error"] = true;
 		$response["message"] = "Failed to get contractors list. Please try again";
+	}
+	echoResponse(200, $response);
+});
+/**
+ * Listing all customers
+ * method GET
+ * url /customers
+ */
+$app->post('/customers/all/dt', function() use ($app) {
+	// listing all customers
+	$db = new DbHandlerProfile();
+	$type = 1;
+	$result = $db->getAllGroupsWeb($type);
+	$response = array();
+	if ($result != NULL || empty($result)) {
+		$response["draw"] = intval(1);
+		$response["recordsTotal"] = intval(count($result));
+		$response["recordsFiltered"] = intval(count($result));
+		$response["data"] = $result;
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to get groups of user. Please try again";
 	}
 	echoResponse(200, $response);
 });
@@ -719,6 +878,148 @@ $app->delete('/customers/:id', function($id) use ($app) {
 	echoResponse(200, $response);
 });
 
+//---------Customer status operations------------------------
+
+$app->post('/customers/make_processing/:id',  'authenticate', function($id) use ($app) {
+	
+	global $user_id;	
+	$db = new DbHandlerProfile();		
+	permissionFabricantAdmin($user_id);
+	
+	try{
+		
+		if(!$db->isCustomer($id)){
+			throw new Exception("Group is not customer");
+		}
+		
+		$status=0;	
+	
+		if(!$db->changeGroupStatus($status, $id)){
+			throw new Exception("Mysql error when change group status");
+		}
+		
+		consoleCommandGroupUpdated($id);
+		
+		$response['error'] = false;
+		$response['message'] = "Group status changed";
+		$response['group'] = $db->getGroupById($id)[0];
+		$response['success'] = 1;
+		
+	} catch (Exception $e) {
+	
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+	}
+	
+	echoResponse(200, $response);
+});
+
+$app->post('/customers/make_verified/:id',  'authenticate', function($id) use ($app) {
+	
+	global $user_id;	
+	$db = new DbHandlerProfile();		
+	permissionFabricantAdmin($user_id);
+	
+	try{
+		
+		if(!$db->isCustomer($id)){
+			throw new Exception("Group is not customer");
+		}
+		
+		$status=2;	
+	
+		if(!$db->changeGroupStatus($status, $id)){
+			throw new Exception("Mysql error when change group status");
+		}
+		
+		consoleCommandGroupUpdated($id);
+		
+		$response['error'] = false;
+		$response['message'] = "Group status changed";
+		$response['group'] = $db->getGroupById($id)[0];
+		$response['success'] = 1;
+		
+	} catch (Exception $e) {
+	
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+	}
+	
+	echoResponse(200, $response);
+});
+
+$app->post('/customers/make_not_verified/:id',  'authenticate', function($id) use ($app) {
+	
+	global $user_id;	
+	$db = new DbHandlerProfile();		
+	permissionFabricantAdmin($user_id);
+	
+	try{
+		
+		if(!$db->isCustomer($id)){
+			throw new Exception("Group is not customer");
+		}
+		
+		$status=1;	
+	
+		if(!$db->changeGroupStatus($status, $id)){
+			throw new Exception("Mysql error when change group status");
+		}
+		
+		consoleCommandGroupUpdated($id);
+		
+		$response['error'] = false;
+		$response['message'] = "Group status changed";
+		$response['group'] = $db->getGroupById($id)[0];
+		$response['success'] = 1;
+		
+	} catch (Exception $e) {
+	
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+	}
+	
+	echoResponse(200, $response);
+});
+
+$app->post('/customers/remove/:id',  'authenticate', function($id) use ($app) {
+	
+	global $user_id;	
+	$db = new DbHandlerProfile();		
+	permissionFabricantAdmin($user_id);
+	
+	try{
+		
+		if(!$db->isCustomer($id)){
+			throw new Exception("Group is not customer");
+		}
+		
+		$status=4;	
+	
+		if(!$db->changeGroupStatus($status, $id)){
+			throw new Exception("Mysql error when change group status");
+		}
+		
+		consoleCommandGroupUpdated($id);
+		
+		$response['error'] = false;
+		$response['message'] = "Group status changed";
+		$response['group'] = $db->getGroupById($id)[0];
+		$response['success'] = 1;
+		
+	} catch (Exception $e) {
+	
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+	}
+	
+	echoResponse(200, $response);
+});
+
 //--------------------Orders----------------------------
 
 /**
@@ -795,7 +1096,7 @@ $app->get('/savetoexcelc/:id', 'authenticate', function($id) use ($app) {
 					$tmp["customerUserName"] = $order["customerUserName"];
 					$tmp["address"] = $order["address"];
 					$tmp["phone"] = $order["phone"];
-					$tmp["itemid"] = $item["productid"];
+					$tmp["itemid"] = $db->getProductCodeById($item["productid"]);
 					$tmp["itemname"] = $item["name"];
 					$tmp["itemcount"] = $item["count"];
 					$tmp["itemprice"] = $item["price"];
@@ -839,7 +1140,13 @@ $app->get('/savetoexcelc/:id', 'authenticate', function($id) use ($app) {
 		foreach ($data as $orderskey => $order) {
 			$i=0;
 			foreach ($order as $recordkey => $record) {
-				$sheet->setCellValueByColumnAndRow($i++, $orderskey+2, $record);
+				if($i==7) {
+					$type = PHPExcel_Cell_DataType::TYPE_STRING;
+					$sheet->getCellByColumnAndRow($i++, $orderskey+2)->setValueExplicit(strval($record), $type);
+				}
+				else{
+					$sheet->setCellValueByColumnAndRow($i++, $orderskey+2, $record);
+				}
 			}
 		}
 		$filename = date('dmY').'-'.uniqid('1c-').".xls";
@@ -1154,6 +1461,65 @@ function createThumb($image,$size,$path) {
 	}
 }
 
+//--------------------Permission--------------------------------
+
+function permissionFabricantAdmin($userid){
+
+	if( ($userid==1) || ($userid==3) )return;
+	
+	$response["error"] = true;
+	$response["message"] = "You have no permission. Only fabricant admin has permission";
+	$response["success"] = 0;
+	echoResponse(200, $response);
+	$app->stop();
+}
+
+function permissionInGroup($userid,$groupid,$db_profile){
+	
+	$status=$db_profile->getUserStatusInGroup($groupid,$userid);
+	
+	if($userid==1 || $userid==3)return;
+	
+	if( ($status == 0)||($status == 2) || ($status == 1))return;
+	
+	$response["error"] = true;
+	$response["message"] = "You have no permission. Only user in group has permission";
+	$response["success"] = 0;
+	echoResponse(200, $response);
+	$app->stop();
+}	
+
+function permissionAdminInGroup($userid,$groupid,$db_profile){
+	
+	$status=$db_profile->getUserStatusInGroup($groupid,$userid);
+	
+	if($userid==1 || $userid==3)return;
+	
+	if( ($status == 2) || ($status == 1))return;
+	
+	$response["error"] = true;
+	$response["message"] = "You have no permission. Only group admin has permission";
+	$response["success"] = 0;
+	echoResponse(200, $response);
+	$app->stop();
+}
+
+function permissionSuperAdminInGroup($userid,$groupid,$db_profile){
+	
+	$status=$db_profile->getUserStatusInGroup($groupid,$userid);
+	
+	if($userid==1 || $userid==3)return;
+	
+	if($status == 1)return;
+	
+	$response["error"] = true;
+	$response["message"] = "You have no permission. Only group super admin has permission";
+	$response["success"] = 0;
+	echoResponse(200, $response);
+	$app->stop();
+}
+
+//-------------------Console----------------------------------
 
 //Operation numbers from WebsocketServer
 define("M_CONSOLE_OPERATION_USER_CHANGED", 0);

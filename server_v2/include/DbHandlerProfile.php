@@ -14,6 +14,14 @@ class DbHandlerProfile extends DbHandler{
         parent::__construct();
     }
 	
+	const CUSTOMER_STATUS_IN_PROCESSING=0;
+	const CUSTOMER_STATUS_NOT_VERIFIED=1;
+	const CUSTOMER_STATUS_VERIFIED=2;
+	const CUSTOMER_STATUS_REMOVED=4;
+	
+	const CONTRACTOR_STATUS_IN_PROCESSING=0;
+	const CONTRACTOR_STATUS_PUBLIC=1;
+	const CONTRACTOR_STATUS_REMOVED=4;
 	
 /* ------------- `users by phone` ------------------ */
 	
@@ -1335,8 +1343,7 @@ class DbHandlerProfile extends DbHandler{
 	 * @param Integer $groupid	
      */
 	public function changeGroupName($name,$groupid) {
-                    		
-        //Update status column on users table		
+                    			
 		$stmt = $this->conn->prepare("UPDATE `groups` SET `name` = ? WHERE ( `id` = ? )");
         $stmt->bind_param("si", $name,$groupid);
 		$result = $stmt->execute();
@@ -1358,14 +1365,93 @@ class DbHandlerProfile extends DbHandler{
 	}
 	
 	public function changeGroupInfo($info,$groupid) {
-		//Update status column on users table		
 		$stmt = $this->conn->prepare("UPDATE `groups` SET `info` = ? WHERE ( `id` = ? )");
         $stmt->bind_param("si", $info,$groupid);
 		$result = $stmt->execute();
 		$stmt->close();
 	}
+	
+	public function changeGroupStatus($status,$groupid) {
+                    			
+		$stmt = $this->conn->prepare("UPDATE `groups` SET `status` = ? WHERE ( `id` = ? )");
+        $stmt->bind_param("ii", $status,$groupid);
+		$result = $stmt->execute();
+		
+		if($result){
+			$stmt->close();
+			return true;
+		}		
+		
+		$stmt->close();
+		return false;
+		
+    }
+	
+	public function isContractor($groupid) {
+        
+            $stmt = $this->conn->prepare("
+				SELECT g.type  
+				FROM groups g 
+				LEFT OUTER JOIN avatars a ON g.avatar = a.id 
+				WHERE ( g.id  = ? ) ");
+				
+            $stmt->bind_param("i", $groupid); 
+             
+			if($stmt->execute()){
+			
+				$stmt->bind_result($type);
+				
+				$result=array();
+				
+				if($stmt->fetch()){
+				
+					$stmt->close();	
+					
+					if($type==0)return true;
+					else return false;
+				}		
+				
+				$stmt->close();	
+				
+				
+			}
+			
+			return false;			
+    }
+	
+	public function isCustomer($groupid) {
+        
+            $stmt = $this->conn->prepare("
+				SELECT g.type  
+				FROM groups g 
+				LEFT OUTER JOIN avatars a ON g.avatar = a.id 
+				WHERE ( g.id  = ? ) ");
+				
+            $stmt->bind_param("i", $groupid); 
+             
+			if($stmt->execute()){
+			
+				$stmt->bind_result($type);
+				
+				$result=array();
+				
+				if($stmt->fetch()){
+				
+					$stmt->close();	
+					
+					if($type==1)return true;
+					else return false;
+				}		
+				
+				$stmt->close();	
+				
+				
+			}
+			
+			return false;			
+    }
 
-//---------------------Fabricant----------------------------
+	//---------------------Fabricant----------------------------
 	
 	/**
 	* Get all groups from web (adminpanel)
@@ -1465,7 +1551,7 @@ class DbHandlerProfile extends DbHandler{
         return $result;
     }
 
-//-------------------------Fabricant Sales---------------------
+	//-------------------------Fabricant Sales---------------------
 	
 	public function addSaleToContractorInfo($contractorid,$condition){
 		$groups=$this->getGroupById($contractorid);
@@ -1601,7 +1687,7 @@ class DbHandlerProfile extends DbHandler{
 		
 	}
 	
-//--------------------------Tags----------------------------
+	//--------------------------Tags----------------------------
 	
 	public function addTagToGroup($tag,$groupid){
 		
@@ -1730,8 +1816,7 @@ class DbHandlerProfile extends DbHandler{
 			}
 			$stmt->close();
 			return $result;
-		}
-		else {
+		} else {
 			return NULL;
 		}
 	}
@@ -1761,7 +1846,7 @@ class DbHandlerProfile extends DbHandler{
 		
 	}
 	
-//----------------Friend Operations-----------------------
+	//----------------Friend Operations-----------------------
 	
 	const OPERATION_ADD=0;
 	const OPERATION_CANCEL=1;
@@ -2147,7 +2232,6 @@ class DbHandlerProfile extends DbHandler{
 			
     }
 	
-		
 	public function getGroupUsersDelta($userid,$timestamp) {
         
 			

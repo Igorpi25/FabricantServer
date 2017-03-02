@@ -16,9 +16,10 @@ class DbHandlerFabricant extends DbHandler{
 	
 	const STATUS_ORDER_PROCESSING=1;
 	const STATUS_ORDER_CONFIRMED=2;
-	const STATUS_ORDER_ONWAY=3;		
-	const STATUS_ORDER_TRANSFERRED=5;//Only on client side
+	const STATUS_ORDER_ONWAY=3;			
 	const STATUS_ORDER_CANCELED=4;
+	const STATUS_ORDER_TRANSFERRED=5;//Only on client side
+	const STATUS_ORDER_HIDDEN=6;//Становится не отображаемым в панели поставщика и приложении заказчика
 	const STATUS_ORDER_DELIVERED=8;
 	
 	
@@ -31,6 +32,7 @@ class DbHandlerFabricant extends DbHandler{
 	const ORDER_OPERATION_TYPE_UPDATE=4;
 	const ORDER_OPERATION_TYPE_TRANSFER=5;
 	const ORDER_OPERATION_TYPE_MAKE_PAID=6;
+	const ORDER_OPERATION_TYPE_HIDE=7;
 	
 	
 	const CONTRACTOR_CONDITION_TYPE_SALERATE=4;
@@ -232,6 +234,24 @@ class DbHandlerFabricant extends DbHandler{
 		return $result;
 	}
 
+	public function getProductCodeById($id) {
+
+		$stmt = $this->conn->prepare("SELECT `code1c` FROM `products` WHERE `id`=?");
+		$stmt->bind_param("i", $id);
+		if ($stmt->execute()) {
+			$stmt->store_result();
+			if($stmt->num_rows==0)return NULL;
+
+			$stmt->bind_result($code1c);
+			$stmt->fetch();
+			$res=$code1c;
+			$stmt->close();
+			return $res;
+		} else {
+			return NULL;
+		}
+	}
+
 	//-----------------Order--------------------
 	
 	public function createOrder($record){
@@ -416,6 +436,26 @@ class DbHandlerFabricant extends DbHandler{
 		return $result;
 	}
 	
+	public function hideOrder($record) {	
+		
+		$date_string=date('Y-m-d H:i:s',time());
+		$record["hidden_at"]=$date_string;
+		$json_info=json_encode($record,JSON_UNESCAPED_UNICODE);
+		
+		$status=self::STATUS_ORDER_HIDDEN;
+		
+		// update query
+		$stmt = $this->conn->prepare("UPDATE orders SET status=? , record=?, changed_at=? WHERE id=?");
+		$stmt->bind_param("issi", $status,$json_info,$date_string,$record["id"]);
+		$result = $stmt->execute();
+		$stmt->close();
+		
+		//write log in orders_operations table
+		$this->addOrderOperation($record["id"],$record["contractorid"],$record["customerid"],self::ORDER_OPERATION_TYPE_HIDE,$json_info,"Order hide operation. comment=".$record["hideComment"]);
+		
+		return $result;
+	}
+	
 	public function updateOrder($record) {
 	
 		$date_string=date('Y-m-d H:i:s',time());
@@ -471,6 +511,7 @@ class DbHandlerFabricant extends DbHandler{
 		
 		return $result;
 	}
+	
 	//-------------------OrderOperations-----------------------
 	
 	public function addOrderOperation($orderid,$contractorid,$customerid,$type,$record,$comment){
@@ -516,7 +557,7 @@ class DbHandlerFabricant extends DbHandler{
 	
 	//-----------------------Sales methods------------------
 	
-	public function createSaleRate($userid,$contractorid,$label,$name,$name_full,$summary,$rate){
+	public function createSaleRate($userid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$rate,$cash_only){
 		
 		$created_at=date('Y-m-d H:i:s',time());
 		
@@ -540,7 +581,10 @@ class DbHandlerFabricant extends DbHandler{
 		$text_object["text"]=$summary;
 		$condition["summary"]=$text_object;
 		
+		
 		$condition["rate"]=$rate;
+		
+		$condition["cash_only"]=$cash_only;
 		
 		$condition["created_at"]=$created_at;
 		
@@ -550,6 +594,7 @@ class DbHandlerFabricant extends DbHandler{
 		$condition["id"]=$saleid;
 		$condition["tag_product"]=$tag;
 		$condition["tag_customer"]=$tag;
+		$condition["for_all_customers"]=$for_all_customers;
 		
 		$this->updateSaleCondition($saleid,$created_at,$condition);
 		
@@ -559,7 +604,7 @@ class DbHandlerFabricant extends DbHandler{
 		return $saleid;		
 	}
 	
-	public function createDiscount($userid,$contractorid,$label,$name,$name_full,$summary,$rate,$min_summ,$max_summ){ 
+	public function createDiscount($userid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$for_all_products,$rate,$min_summ,$max_summ,$cash_only){
 		$created_at=date('Y-m-d H:i:s',time());
 		
 		$condition=array();
@@ -582,9 +627,11 @@ class DbHandlerFabricant extends DbHandler{
 		$text_object["text"]=$summary;
 		$condition["summary"]=$text_object;
 		
+		
 		$condition["rate"]=$rate;
 		$condition["min_summ"]=$min_summ;
 		$condition["max_summ"]=$max_summ;
+		$condition["cash_only"]=$cash_only;
 		
 		$condition["created_at"]=$created_at;
 		
@@ -594,6 +641,8 @@ class DbHandlerFabricant extends DbHandler{
 		$condition["id"]=$saleid;		
 		$condition["tag_product"]=$tag;
 		$condition["tag_customer"]=$tag;
+		$condition["for_all_customers"]=$for_all_customers;
+		$condition["for_all_products"]=$for_all_products;
 		
 		$this->updateSaleCondition($saleid,$created_at,$condition);
 		
@@ -603,7 +652,7 @@ class DbHandlerFabricant extends DbHandler{
 		return $saleid;	
 	}
 	
-	public function createInstallment($userid,$contractorid,$label,$name,$name_full,$summary,$time_notification){
+	public function createInstallment($userid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$time_notification){
 		
 		$created_at=date('Y-m-d H:i:s',time());
 		
@@ -627,6 +676,7 @@ class DbHandlerFabricant extends DbHandler{
 		$text_object["text"]=$summary;
 		$condition["summary"]=$text_object;
 		
+		
 		$condition["time_notification"]=$time_notification;
 		
 		$condition["created_at"]=$created_at;
@@ -637,6 +687,7 @@ class DbHandlerFabricant extends DbHandler{
 		$condition["id"]=$saleid;		
 		$condition["tag_product"]=$tag;
 		$condition["tag_customer"]=$tag;
+		$condition["for_all_customers"]=$for_all_customers;
 		$condition["price_name"]="installment_".$saleid;
 		
 		$this->updateSaleCondition($saleid,$created_at,$condition);

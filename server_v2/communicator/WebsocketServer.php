@@ -91,6 +91,7 @@ define("ORDEROPERATION_ACCEPT", 2);
 define("ORDEROPERATION_REMOVE", 3);
 define("ORDEROPERATION_TRANSFER", 4);
 define("ORDEROPERATION_MAKE_PAID", 5);
+define("ORDEROPERATION_HIDE", 6);
 
 define("SALE_OPERATION_CREATE", 0);
 define("SALE_OPERATION_REMOVE", 1);
@@ -239,7 +240,7 @@ public function Start(){
 				if($this->isConnectIncognito($connect)){
 					$this->removeConnectIncognito($connect);
 				}else if(in_array($connect,$this->connects)){
-					$this->removeConnect($connect);
+					$this->removeConnect($connect);							
 				}
 				
 				fclose($connect);
@@ -278,8 +279,7 @@ protected function putConnectIncognito($connect) {
 	$this->log("putConnectIncognito. connectid=".$connectid);
 	array_push($this->connects_incognito,$connect);
 	$this->map_connectid_connect_incognito[strval($connectid)]=$connect;
-	
-	
+		
 	$this->sendFrame($connect, json_decode('{"transport":"100","value":"Connected to fabricant-server incognito"}',true));
 }
 
@@ -1159,7 +1159,7 @@ protected function ProcessMessageProfile($sender,$connects,$json) {
 				break;
 				
 				case GROUPOPERATION_CREATE :			
-					$this->groupOperationCreate($senderid);
+					//$this->groupOperationCreate($senderid);
 				break;
 				
 				case GROUPOPERATION_USER_STATUS :		
@@ -1412,6 +1412,17 @@ protected function ProcessConsoleOperation($connect,$info) {
 					
 				break;
 				
+				case ORDEROPERATION_HIDE :
+					$this->db_fabricant->hideOrder($record);
+					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					
+					//Response to console client					
+					$response = array();
+					$response["message"]="Order hidden";
+					$this->sendFrame($connect, $response);
+					
+				break;
+				
 			}	
 			
 		break;
@@ -1431,9 +1442,10 @@ protected function ProcessConsoleOperation($connect,$info) {
 					$name=$info["name"];
 					$name_full=$info["name_full"];
 					$summary=$info["summary"];
+					$for_all_customers=$info["for_all_customers"];
 					
 					if(!$this->db_profile->isUserInGroup($contractorid,$senderid)){				
-						$this->consoleResponse($connect,true,500,"User is not in contractor group. contractorid=".$contractorid." userid=".$senderid);
+						$this->consoleResponse($connect,true,200,"User is not in contractor group. contractorid=".$contractorid." userid=".$senderid);
 						return;
 					}
 					
@@ -1441,25 +1453,28 @@ protected function ProcessConsoleOperation($connect,$info) {
 					switch($type){
 						case SALE_TYPE_SALE:
 							$rate=$info["rate"];	
-							$saleid=$this->db_fabricant->createSaleRate($senderid,$contractorid,$label,$name,$name_full,$summary,$rate);
+							$cash_only=$info["cash_only"];
+							$saleid=$this->db_fabricant->createSaleRate($senderid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$rate,$cash_only);
 							break;
 							
 						case SALE_TYPE_DISCOUNT:
 							$rate=$info["rate"];				
 							$min_summ=$info["min_summ"];
 							$max_summ=$info["max_summ"];
-							$saleid=$this->db_fabricant->createDiscount($senderid,$contractorid,$label,$name,$name_full,$summary,$rate,$min_summ,$max_summ);
+							$cash_only=$info["cash_only"];
+							$for_all_products=$info["for_all_products"];
+							$saleid=$this->db_fabricant->createDiscount($senderid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$for_all_products,$rate,$min_summ,$max_summ,$cash_only);
 							break;
 							
 						case SALE_TYPE_INSTALLMENT:
 							$time_notification=$info["time_notification"];				
-							$saleid=$this->db_fabricant->createInstallment($senderid,$contractorid,$label,$name,$name_full,$summary,$time_notification);
+							$saleid=$this->db_fabricant->createInstallment($senderid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$time_notification);
 							break;						
 					}
 					
 					//add created sale into contractor
 					if(!isset($saleid)){
-						$this->consoleResponse($connect,true,500,"Sale id is not set");
+						$this->consoleResponse($connect,true,200,"Sale id is not set");
 						return;
 					}	
 					
@@ -1483,7 +1498,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 					
 					//remove sale in sales table
 					if(!$this->db_fabricant->removeSale($senderid,$saleid)){
-						$this->consoleResponse($connect,true,500,"Sale saleid=".$saleid." is not found");
+						$this->consoleResponse($connect,true,200,"Sale saleid=".$saleid." is not found");
 						return;
 					}
 					
@@ -1515,6 +1530,9 @@ protected function ProcessConsoleOperation($connect,$info) {
 						case SALE_TYPE_INSTALLMENT:
 							$before_change_products=time()-1;
 							
+							$tag=$condition["tag_product"];
+							$this->db_fabricant->removeTagFromContractorProducts($contractorid,$tag);
+							
 							$price_name=$condition["price_name"];
 							$this->db_fabricant->removePriceInstallmentFromContractorProducts($contractorid,$price_name);
 							
@@ -1524,14 +1542,14 @@ protected function ProcessConsoleOperation($connect,$info) {
 							break;
 					}
 					
-					//Removing tag_customer	from customers								
+					//Removing tag_customer	from customers
 					$tag=$condition["tag_customer"];
 					$customers=$this->db_profile->removeTagFromCustomers($tag);
 					
 					//Notify changed customers
 					$this->outgoingNotifyGroupsChanged($customers);
 					
-					//Console response					
+					//Console response
 					$this->consoleResponse($connect,false,200,"Sale removed");
 					
 				break;
@@ -1543,14 +1561,14 @@ protected function ProcessConsoleOperation($connect,$info) {
 					$sale=$this->db_fabricant->getSaleById($saleid);
 					
 					if(!isset($sale)){
-						$this->consoleResponse($connect,true,500,"Sale id is not set");
+						$this->consoleResponse($connect,true,200,"Sale id is not set");
 						return;
 					}	
 					
 					$contractorid=$sale["contractorid"];
 					
 					if(!$this->db_profile->isUserInGroup($contractorid,$senderid)){				
-						$this->consoleResponse($connect,true,500,"User is not in contractor group. contractorid=".$contractorid." userid=".$senderid);
+						$this->consoleResponse($connect,true,200,"User is not in contractor group. contractorid=".$contractorid." userid=".$senderid);
 						return;
 					}
 					
@@ -1573,6 +1591,8 @@ protected function ProcessConsoleOperation($connect,$info) {
 					$text_object["text"]=$info["summary"];
 					$condition["summary"]=$text_object;				
 					
+					$condition["for_all_customers"]=$info["for_all_customers"];	
+					
 					//set specific condition params
 					$type=$condition["type"];					
 					switch($type){
@@ -1584,13 +1604,15 @@ protected function ProcessConsoleOperation($connect,$info) {
 							$condition["rate"]=$info["rate"];
 							$condition["min_summ"]=$info["min_summ"];	
 							$condition["max_summ"]=$info["max_summ"];
-							break;	
+							$condition["cash_only"]=$info["cash_only"];
+							$condition["for_all_products"]=$info["for_all_products"];
+							break;
 						
 						case SALE_TYPE_INSTALLMENT:
 							$this->log("SALE_TYPE_INSTALLMENT info=".json_encode($info,JSON_UNESCAPED_UNICODE));
 							$this->log("SALE_TYPE_INSTALLMENT condition=".json_encode($condition,JSON_UNESCAPED_UNICODE));
 							$condition["time_notification"]=$info["time_notification"];											
-							break;									
+							break;
 					}
 					
 					//update sale in sales table
@@ -2342,7 +2364,8 @@ protected function onMessage($sender,$connects,$data) {
 	$message_string= $decoded_data['payload'] . "\n";		
 	$json=json_decode($message_string,true);
 	
-	if( array_key_exists("transport",$json) ){
+	//Только регистрированные не инкогнито соединения
+	if( array_key_exists("transport",$json) && !$this->isConnectIncognito($sender) ){
 		
 		switch($json["transport"]){
 		
@@ -2371,13 +2394,23 @@ protected function onMessage($sender,$connects,$data) {
 				break;
 			}
 			
-			case TRANSPORT_SESSION:{
-				$this->ProcessMessageSession($sender,$connects,$json);
-				break;
+			case TRANSPORT_SESSION :{
+					$this->ProcessMessageSession($sender,$connects,$json);
+					break;
 			}
 			
 		}
 		
+	}else{
+	
+		switch($json["transport"]){
+		
+			case TRANSPORT_SESSION :{
+					$this->ProcessMessageSession($sender,$connects,$json);
+					break;
+			}
+			
+		}
 	}
 	
 }
