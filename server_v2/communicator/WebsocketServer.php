@@ -1598,6 +1598,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 					switch($type){
 						case SALE_TYPE_SALE:
 							$condition["rate"]=$info["rate"];
+							$condition["cash_only"]=$info["cash_only"];
 							break;
 						
 						case SALE_TYPE_DISCOUNT:

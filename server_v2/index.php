@@ -757,8 +757,6 @@ $app->post('/orders/create', 'authenticate', function () use ($app)  {
 	$response = array();
 	
 	$record=array();
-	$record["make_record_logs"]=array();
-	$record["make_record_logs"][]="empty";
 	
 	//try{	
 		
@@ -782,7 +780,7 @@ $app->post('/orders/create', 'authenticate', function () use ($app)  {
 		$response['message'] = "Order has been created";
 		$response['order'] = $db_fabricant->getOrderById($console_response["orderid"]);
 		$response['success'] = 1;
-		$response['make_record_logs'] = "make_record_logs: ".implode (" , ",$record["make_record_logs"]);
+		
         
 	/*} catch (Exception $e) {
         
@@ -861,14 +859,12 @@ $app->post('/orders/update', 'authenticate', function () use ($app)  {
 		$response['message'] = "Order has been updated";
 		$response['order'] = $db_fabricant->getOrderById($old_order_id);
 		$response['success'] = 1;
-		//$response['make_record_logs'] = "make_record_logs: ".implode (" , ",$record["make_record_logs"]);
         
 	} catch (Exception $e) {
         
 		$response['error'] = true;
 		$response['message'] = $e->getMessage();
 		$response['success'] = 0;
-		//$response['make_record_logs'] = "make_record_logs: ".implode (" , ",$record["make_record_logs"]);
 	}
 	
 	echoResponse(200, $response);
