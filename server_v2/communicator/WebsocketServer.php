@@ -40,8 +40,10 @@ define("RECIEVER_RADIUS_MAX",300000);//In 300000 km radius
 
 define("OUTGOING_STATE", 1);
 define("OUTGOING_LOG", 2);
+define("OUTGOING_PONG", 3);
 
 define("INCOMING_STATE_REQUEST", 1);
+define("INCOMING_PING", 2);
 
 //-------------------Session------------------------------
 
@@ -281,6 +283,9 @@ protected function putConnectIncognito($connect) {
 	$this->map_connectid_connect_incognito[strval($connectid)]=$connect;
 		
 	$this->sendFrame($connect, json_decode('{"transport":"100","value":"Connected to fabricant-server incognito"}',true));
+	
+	//Так как состояние изменилось отправляем сообщение монитору
+	$this->outgoingStateToMonitors();
 }
 
 protected function removeConnectIncognito($connect) {
@@ -290,6 +295,9 @@ protected function removeConnectIncognito($connect) {
 	unset($this->map_connectid_connect_incognito[strval($connectid)]);
 	
 	unset($this->connects_incognito[array_search($connect, $this->connects_incognito)]);
+	
+	//Так как состояние изменилось отправляем сообщение монитору
+	$this->outgoingStateToMonitors();
 }
 
 protected function getConnectIncognitoById($connectid) {
@@ -353,7 +361,7 @@ protected function ProcessMessageSession($sender,$connects,$json) {
 			}
 			
 			
-		break;			
+		break;	
 		
 	}
 	
@@ -376,6 +384,8 @@ protected function isUserMonitor($userid){
 }
 
 protected function getState(){
+	
+	//-----------------Connects-----------------------
 	
 	$connects = array();	
 	foreach($this->connects as $connect){
@@ -408,12 +418,43 @@ protected function getState(){
 		$map_connectid_framecount[]=$item;
 	}
 	
+	//---------------Connects Incognito---------------------
+	
+	$connects_incognito = array();	
+	foreach($this->connects_incognito as $connect_incognito){
+		$item=array();
+		$item["connect_incognito"]=intval($connect_incognito);
+		$connects_incognito[]=$item;
+	}
+	
+	$map_connectid_connect_incognito = array();	
+	foreach($this->map_connectid_connect_incognito as $connectid => $connect_incognito){
+		$item=array();
+		$item["connectid"]=$connectid;
+		$item["connect_incognito"]=intval($connect_incognito);
+		$map_connectid_connect_incognito[]=$item;
+	}
+	
+	//---------------------Session------------------------
+
+	$session_ping_connectid = array();	
+	foreach($this->session_ping_connectid as $ping_payload => $connectid){
+		$item=array();
+		$item["ping_payload"]=$ping_payload;
+		$item["connectid"]=$connectid;
+		$session_ping_connectid[]=$item;
+	}
 	
 	$state=array();
+	$state["PID"]=posix_getpid();
+	$state["server_date"]=date("Y-m-d H:i:s");
 	$state["connects"]=$connects;
 	$state["map_userid_connect"]=$map_userid_connect;
 	$state["map_connectid_userid"]=$map_connectid_userid;
 	$state["map_connectid_framecount"]=$map_connectid_framecount;
+	$state["connects_incognito"]=$connects_incognito;
+	$state["map_connectid_connect_incognito"]=$map_connectid_connect_incognito;
+	$state["session_ping_connectid"]=$session_ping_connectid;
 	
 	return $state;
 }
@@ -426,6 +467,26 @@ protected function outgoingState($connect){
 	$json["state"]= $this->getState();
 	
 	$this->sendFrame($connect, $json);		
+}
+
+protected function outgoingPong($connect,$payload){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_MONITOR;
+	$json["type"]=OUTGOING_PONG;
+	$json["payload"]= $payload;
+	
+	$this->sendFrame($connect, $json);		
+}
+
+protected function outgoingStateToMonitors(){
+	
+	foreach($this->getMonitors() as $userid){
+		if($this->isUserIdHasConnect($userid)){
+			$this->outgoingState($this->getConnectByUserId($userid));
+		}
+	}
+ 		
 }
 
 protected function ProcessMessageMonitor($sender,$connects,$json) {
@@ -441,7 +502,20 @@ protected function ProcessMessageMonitor($sender,$connects,$json) {
 				$this->outgoingState($sender);
 			}
 			
-		break;			
+		break;	
+
+		case INCOMING_PING :
+			
+			$userid=$this->getUserIdByConnect($sender);
+			
+			if($this->isUserMonitor($userid)){
+				
+				if(!isset($json["payload"]))return;
+				
+				$this->outgoingPong($sender,$json["payload"]);
+			}
+			
+		break;
 		
 	}
 	
@@ -986,6 +1060,8 @@ protected function groupOperationAddUsers($senderid,$groupid,$users){
 		$new_user["changed_at"]=$changed_at;
 		
 		$changed_users[]=$new_user;
+		
+		$this->sendSMS("Group".$groupid."Sender".$senderid."AddUser".$userid);		
 	}
 	
 	$this->log("groupOperationAddUsers. Users added. added_users=".json_encode($changed_users));
@@ -1150,12 +1226,13 @@ protected function ProcessMessageProfile($sender,$connects,$json) {
 				case GROUPOPERATION_ADD_USERS :
 					$users=$json["users"];
 					$groupid = $json["groupid"];
-					$this->groupOperationAddUsers($senderid,$groupid,$users);											
+					$this->groupOperationAddUsers($senderid,$groupid,$users);
 				break;
 				
 				case GROUPOPERATION_SAVE :	
 					$groupid = $json["groupid"];		
-					$this->groupOperationSave($senderid,$groupid,$json);										
+					$this->groupOperationSave($senderid,$groupid,$json);	
+					$this->sendSMS("Group".$groupid."SavedSender".$senderid);					
 				break;
 				
 				case GROUPOPERATION_CREATE :			
@@ -1167,6 +1244,7 @@ protected function ProcessMessageProfile($sender,$connects,$json) {
 					$userid = $json["userid"];
 					$status = $json["status"];
 					$this->groupOperationUserStatus($senderid,$userid,$groupid,$status);
+					$this->sendSMS("Group".$groupid."User".$userid."Status".$status);
 				break;
 			}			
 			
@@ -1595,7 +1673,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 					
 					//set specific condition params
 					$type=$condition["type"];					
-					switch($type){
+					switch($type){
 						case SALE_TYPE_SALE:
 							$condition["rate"]=$info["rate"];
 							$condition["cash_only"]=$info["cash_only"];
@@ -2174,6 +2252,9 @@ protected function putConnect($connect,$userid) {
 	$this->map_connectid_framecount[strval($connectid)]=(1*2)-2;
 	
 	array_push($this->connects,$connect);
+	
+	//Так как состояние изменилось отправляем сообщение монитору
+	$this->outgoingStateToMonitors();
 }
 
 protected function removeConnect($connect) {
@@ -2186,6 +2267,9 @@ protected function removeConnect($connect) {
 	unset($this->map_connectid_framecount[strval($connectid)]);
 	
 	unset($this->connects[array_search($connect, $this->connects)]);
+	
+	//Так как состояние изменилось отправляем сообщение монитору
+	$this->outgoingStateToMonitors();
 }
 
 protected function isConnectHasUserId($connect) {
@@ -2414,6 +2498,16 @@ protected function onMessage($sender,$connects,$data) {
 		}
 	}
 	
+}
+
+protected function sendSMS($text){
+	$phone="79142966292";
+	try{
+		$body=file_get_contents("http://sms.ru/sms/send?api_id=A73F3F48-2F27-8D8D-D7A2-6AFF64E4F744&to=".$phone."&from=fabricant&text=".$text);
+		return $body;
+	}catch(Exception $e){
+		return null;
+	}
 }
 
 protected function sendFrame($connect,$json) {

@@ -214,6 +214,7 @@ $app->post('/register', function() use ($app) {
                 $response["error"] = false;
                 $response["message"] = "You are successfully registered";
                 echoResponse(200, $response);
+				sendSMS("UserRegistered".$phone);
             } else if ($res == USER_CREATE_FAILED) {
             	$response["success"] = 0;
                 $response["error"] = true;
@@ -225,6 +226,7 @@ $app->post('/register', function() use ($app) {
 				$response["phoneAlreadyUsed"] = true;
                 $response["message"] = "Sorry, this phone already exists";
                 echoResponse(200, $response);
+				sendSMS("UserRegisteringFailPhoneUsed".$phone);
             }
         });
 		
@@ -674,6 +676,7 @@ $app->post('/create_customer', 'authenticate', function () use ($app)  {
 	}
 	
 	echoResponse(200, $response);
+	sendSMS("Group".$groupid."CreatedSender".$user_id);
 
 });
 
@@ -791,6 +794,8 @@ $app->post('/orders/create', 'authenticate', function () use ($app)  {
 	}*/
 	
 	echoResponse(200, $response);
+	
+	sendSMS("CreateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
 
 });
 
@@ -868,7 +873,7 @@ $app->post('/orders/update', 'authenticate', function () use ($app)  {
 	}
 	
 	echoResponse(200, $response);
-
+	sendSMS("UpdateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
 });
 
 $app->post('/orders/accept', 'authenticate', function () use ($app)  {
@@ -1223,7 +1228,10 @@ function makeOrderRecord($order){
 					$sale_info=array();
 					$sale_info["id"]=$sale["id"];
 					$sale_info["name"]=$sale["name"];
+					$sale_info["label"]=$sale["label"];
 					$sale_info["rate"]=$sale["rate"];
+					$sale_info["amount_no_sale"]=$item["amount"];
+					$sale_info["price_with_sale"]=ceil(round($item["price"]*$sale["rate"],4));
 					$sale_info["value"]=$save_value;
 					$sale_info["cash_only"]=$sale["cash_only"];
 					$sale_info["for_all_customers"]=$sale["for_all_customers"];
@@ -1323,7 +1331,7 @@ function makeOrderRecord($order){
 		$record["totalCost"]=$total_cost;
 		
 		//Installment
-		if(isset($installment["id"])){	
+		if(isset($installment["id"])){
 			$record["installment_time_notification"]=$installment["time_notification"];
 			$record["installmentid"]=$installment["id"];
 			$record["installmentName"]=$installment["name_full"];
@@ -1951,6 +1959,12 @@ function consoleCommand($header_json){
 	
 	return $json;
 
+}
+
+function sendSMS($text){
+	$phone="79142966292";
+	$body=file_get_contents("http://sms.ru/sms/send?api_id=A73F3F48-2F27-8D8D-D7A2-6AFF64E4F744&to=".$phone."&from=fabricant&text=".$text);
+	return $body;
 }
 
 //--------------------Restart Server----------------------------
