@@ -846,7 +846,7 @@ class DbHandlerProfile extends DbHandler{
         
 			$date_string=date('Y-m-d H:i:s',time());
 			
-			$info_string='{"name":{"text":"'.$name.'"},"name_full":{"text":"'.$name.'"},"summary":{"text":""},"icon":{"image_url":""},"details":[{"type":2,"slides":[{"photo":{"image_url":""},"title":{"text":""}}]}]}';
+			$info_string='{"name":{"text":"'.addslashes($name).'"},"name_full":{"text":"'.addslashes($name).'"},"summary":{"text":""},"icon":{"image_url":""},"details":[{"type":2,"slides":[{"photo":{"image_url":""},"title":{"text":""}}]}]}';
 			
             //Insert to 'groups' table
             $stmt = $this->conn->prepare("INSERT INTO groups(name,address,type,status,info,created_at) values(?,?,1,1,?,?)");
@@ -949,7 +949,7 @@ class DbHandlerProfile extends DbHandler{
 					$res["phone"]=$phone;
 					$res["status"]=$status;
 					$res["type"]=$type;
-					$res["info"]=$info;
+					$res["info"]=json_decode($info,true);
 					
 					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 					$res["created_at"]=$timestamp_object->getTimestamp();
@@ -1171,7 +1171,7 @@ class DbHandlerProfile extends DbHandler{
                 $res["phone"]=$phone;
                 $res["status"]=$status;
                 $res["type"]=$type;
-                $res["info"]=$info;
+                $res["info"]=json_decode($info,true);
 				$res["debt"]=$debt;
 				$res["debt_expired"]=$debt_expired;
                 $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
@@ -1510,7 +1510,7 @@ class DbHandlerProfile extends DbHandler{
 	* @param $info json Information of group
 	* @return result
 	*/
-	public function updateGroupWeb($id,$name,$address,$phone,$status,$info) {
+	public function updateGroupWeb($id,$name,$address,$phone,$info) {
 		//Update to 'groups' table
 		$stmt = $this->conn->prepare("UPDATE `groups` SET `name`=?, `address`=?, `phone`=?, `status`=?, `info`=? WHERE `id`=?");
 		$stmt->bind_param("sssisi", $name,$address,$phone,$status,$info,$id);

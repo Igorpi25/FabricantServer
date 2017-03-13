@@ -557,7 +557,7 @@ class DbHandlerFabricant extends DbHandler{
 	
 	//-----------------------Sales methods------------------
 	
-	public function createSaleRate($userid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$rate,$cash_only){
+	public function createSaleRate($userid,$contractorid,$label,$name,$name_full,$summary,$alias,$for_all_customers,$rate,$cash_only){
 		
 		$created_at=date('Y-m-d H:i:s',time());
 		
@@ -581,6 +581,7 @@ class DbHandlerFabricant extends DbHandler{
 		$text_object["text"]=$summary;
 		$condition["summary"]=$text_object;
 		
+		$condition["alias"]=$alias;
 		
 		$condition["rate"]=$rate;
 		
@@ -599,12 +600,12 @@ class DbHandlerFabricant extends DbHandler{
 		$this->updateSaleCondition($saleid,$created_at,$condition);
 		
 		//write log in sales_operations table
-		$this->addSaleOperation($saleid,self::SALE_OPERATION_TYPE_CREATE,$condition,"Sale create operation, userid=".$userid." rate=".$rate);
+		$this->addSaleOperation($saleid,self::SALE_OPERATION_TYPE_CREATE,$condition,"Sale create operation, alias=".$alias." userid=".$userid." rate=".$rate);
 		
 		return $saleid;		
 	}
 	
-	public function createDiscount($userid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$for_all_products,$rate,$min_summ,$max_summ,$cash_only){
+	public function createDiscount($userid,$contractorid,$label,$name,$name_full,$summary,$alias,$for_all_customers,$for_all_products,$rate,$min_summ,$max_summ,$cash_only){
 		$created_at=date('Y-m-d H:i:s',time());
 		
 		$condition=array();
@@ -627,6 +628,7 @@ class DbHandlerFabricant extends DbHandler{
 		$text_object["text"]=$summary;
 		$condition["summary"]=$text_object;
 		
+		$condition["alias"]=$alias;
 		
 		$condition["rate"]=$rate;
 		$condition["min_summ"]=$min_summ;
@@ -647,12 +649,12 @@ class DbHandlerFabricant extends DbHandler{
 		$this->updateSaleCondition($saleid,$created_at,$condition);
 		
 		//write log in sales_operations table
-		$this->addSaleOperation($saleid,self::SALE_OPERATION_TYPE_CREATE,$condition,"Discount create operation, userid=".$userid." rate=".$rate." min_summ=".$min_summ." max_summ=".$max_summ);
+		$this->addSaleOperation($saleid,self::SALE_OPERATION_TYPE_CREATE,$condition,"Discount create operation, alias=".$alias." userid=".$userid." rate=".$rate." min_summ=".$min_summ." max_summ=".$max_summ);
 		
 		return $saleid;	
 	}
 	
-	public function createInstallment($userid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$time_notification){
+	public function createInstallment($userid,$contractorid,$label,$name,$name_full,$summary,$alias,$for_all_customers,$time_notification){
 		
 		$created_at=date('Y-m-d H:i:s',time());
 		
@@ -676,6 +678,7 @@ class DbHandlerFabricant extends DbHandler{
 		$text_object["text"]=$summary;
 		$condition["summary"]=$text_object;
 		
+		$condition["alias"]=$alias;
 		
 		$condition["time_notification"]=$time_notification;
 		
@@ -693,7 +696,7 @@ class DbHandlerFabricant extends DbHandler{
 		$this->updateSaleCondition($saleid,$created_at,$condition);
 		
 		//write log in sales_operations table
-		$this->addSaleOperation($saleid,self::SALE_OPERATION_TYPE_CREATE,$condition,"Installment create operation, userid=".$userid." time_notification=".$time_notification);
+		$this->addSaleOperation($saleid,self::SALE_OPERATION_TYPE_CREATE,$condition,"Installment create operation, alias=".$alias." userid=".$userid." time_notification=".$time_notification);
 		
 		return $saleid;			
 	}
@@ -760,7 +763,7 @@ class DbHandlerFabricant extends DbHandler{
 		$stmt->close();
 		
 		//write log in sales_operations table
-		$this->addSaleOperation($saleid,self::SALE_OPERATION_TYPE_UPDATE,$condition,"Sale update operation. userid=".$userid);
+		$this->addSaleOperation($saleid,self::SALE_OPERATION_TYPE_UPDATE,$condition,"Sale update operation. alias=".$condition["alias"]." userid=".$userid);
 		
 	}
 	

@@ -18,6 +18,7 @@ $app = new \Slim\Slim();
 
 // User id from db - Global Variable
 $user_id = NULL;
+$api_key = NULL;
 /**
  * It used to Slim testing during installation the server 
  */
@@ -90,39 +91,44 @@ function validateEmail($email) {
  * Checking if the request has valid api key in the 'Authorization' header
  */
 function authenticate(\Slim\Route $route) {
-	// Getting request headers
-	$headers = apache_request_headers();
-	$response = array();
-	$app = \Slim\Slim::getInstance();
+    // Getting request headers
+    $headers = apache_request_headers();
+    $response = array();
+    $app = \Slim\Slim::getInstance();
  
-	// Verifying 'Api-Key' Header
-	if (isset($headers['Api-Key'])) {
-		$db = new DbHandlerProfile();
- 		// get the api key
-		$api_key = $headers['Api-Key'];
-		// validating api key
-		if (!$db->isValidApiKey($api_key)) {
+    // Verifying 'Api-Key' Header
+    if (isset($headers['Api-Key'])) {
+        $db = new DbHandlerProfile();
+		
+        // validating api key
+        if (!$db->isValidApiKey($headers['Api-Key'])) {
+            		
 			// api key is not present in users table
-			$response["error"] = true;
-			$response["message"] = "Access Denied. Invalid Api key";
-			$response["success"] = 0;
-			echoResponse(401, $response);
-			$app->stop();
-		} else {
-			global $user_id;
-			// get user primary key id
-			$user = $db->getUserId($api_key);
-			if ($user != NULL)
-				$user_id = $user["id"];
-		}
-	} else {
-		// api key is missing in header
-		$response["error"] = true;
-		$response["message"] = "Api key is missing";
-		$response["success"] = 0;
-		echoResponse(400, $response);
-		$app->stop();
-	}
+            $response["error"] = true;
+            $response["message"] = "Access Denied. Invalid Api key";
+            $response["success"] = 0;
+            echoResponse(200, $response);
+            $app->stop();
+        } else {
+		
+			$user = $db->getUserId($headers['Api-Key']);
+			
+            if ($user != NULL){
+				global $api_key;
+				global $user_id;   
+                $user_id = $user["id"];
+				
+				$api_key = $db->getApiKeyById($user_id)["api_key"];
+			}
+        }
+    } else {
+        // api key is missing in header
+        $response["error"] = true;
+        $response["message"] = "Api key is missing";
+        $response["success"] = 0;
+        echoResponse(200, $response);
+        $app->stop();
+    }
 }
 
 $app->post('/testapikey', 'authenticate', function() {
@@ -602,16 +608,15 @@ $app->post('/contractors', 'authenticate', function() use ($app) {
  */
 $app->put('/contractors/:id',  'authenticate', function($id) use ($app) {
 	// check for required params
-	verifyRequiredParams(array('name', 'address', 'phone', 'status', 'info'));
+	verifyRequiredParams(array('name', 'address', 'phone', 'info'));
 	// reading put params
 	$name = $app->request->put('name');
 	$address = $app->request->put('address');
 	$phone = $app->request->put('phone');
-	$status = $app->request->put('status');
 	$info = $app->request->put('info');
 	// updating contractor
 	$db = new DbHandlerProfile();
-	$result = $db->updateGroupWeb($id, $name, $address, $phone, $status, $info);
+	$result = $db->updateGroupWeb($id, $name, $address, $phone, $info);
 	$response = array();
 	if ($result) {
 		$response["error"] = false;
@@ -832,16 +837,15 @@ $app->post('/customers', function() use ($app) {
  */
 $app->put('/customers/:id', function($id) use ($app) {
 	// check for required params
-	verifyRequiredParams(array('name', 'address', 'phone', 'status', 'info'));
+	verifyRequiredParams(array('name', 'address', 'phone', 'info'));
 	// reading put params
 	$name = $app->request->put('name');
 	$address = $app->request->put('address');
 	$phone = $app->request->put('phone');
-	$status = $app->request->put('status');
 	$info = $app->request->put('info');
 	// updating customers
 	$db = new DbHandlerProfile();
-	$result = $db->updateGroupWeb($id, $name, $address, $phone, $status, $info);
+	$result = $db->updateGroupWeb($id, $name, $address, $phone, $info);
 	$response = array();
 	if ($result) {
 		$response["error"] = false;
@@ -1527,7 +1531,10 @@ define("M_CONSOLE_OPERATION_GROUP_CHANGED", 5);
 define("M_CONSOLE_OPERATION_PRODUCT_CHANGED", 6);
 
 function consoleCommand($header_json){
-
+	
+	global $api_key;
+	$header_json["Api-Key"]=$api_key;
+	
 	$client = new WebsocketClient;
 	
 	$response="{'message': 'ConsoleCommand. begin', 'status':'0'}";

@@ -48,8 +48,12 @@ define("INCOMING_PING", 2);
 //-------------------Session------------------------------
 
 define("INCOMING_LOGIN", 1);
+define("INCOMING_INFO", 2);
 
 define("OUTGOING_LOGIN_DENIED", 1);
+define("OUTGOING_INFO_REQUEST", 2);
+define("OUTGOING_LAST_ANDROID_VERSION", 3);
+define("OUTGOING_YOU_ARE_INCOGNITO", 4);
 
 //-----------------Profile message constants (надо снизу перевести вот сюда )-----------------
 define("OUTGOING_USERS_DELTA", 1);
@@ -124,7 +128,10 @@ public $connects=array();
 
 public $connects_incognito=array();
 public $map_connectid_connect_incognito=array();
+public $map_incognito_connectid_userid=array();
+public $map_incognito_connectid_created_at=array();
 public $session_ping_connectid=array();
+public $session_ping_sent_at=array();
 
 public $recievers=array();
 
@@ -208,7 +215,7 @@ public function Start(){
 					if($this->isUserIdHasConnect($userid)){
 						
 						$this->log("Connect. Accepted. connectid=".$this->getIdByConnect($connect).", userid=".$userid." already exists with connectid=".$this->getIdByConnect($this->getConnectByUserId($userid)).", last_timestamp=".$last_timestamp);
-						$this->putConnectIncognito($connect);
+						$this->putConnectIncognito($connect,$userid);
 						
 						//Отправляем проверочный пинг
 						$this->sendPing($this->getConnectByUserId($userid),strval($this->getIdByConnect($connect)));
@@ -223,7 +230,7 @@ public function Start(){
 				}else{ //Инкогнито
 				
 					$this->log("Connect. Accepted. connectid=".$this->getIdByConnect($connect).", userid = incognito");
-					$this->putConnectIncognito($connect);
+					$this->putConnectIncognito($connect,$userid);
 					
 				}
 	        }
@@ -276,13 +283,18 @@ public function Stop(){
 
 //--------------------Функции протокола Session ---------------------
 
-protected function putConnectIncognito($connect) {
+protected function putConnectIncognito($connect,$userid) {
 	$connectid=$this->getIdByConnect($connect);
-	$this->log("putConnectIncognito. connectid=".$connectid);
+	$this->log("putConnectIncognito. connectid=".$connectid." userid=".$userid);
 	array_push($this->connects_incognito,$connect);
 	$this->map_connectid_connect_incognito[strval($connectid)]=$connect;
-		
+	$this->map_incognito_connectid_userid[strval($connectid)]=$userid;
+	$this->map_incognito_connectid_created_at[strval($connectid)]=date('Y-m-d H:i:s',time());
+	
 	$this->sendFrame($connect, json_decode('{"transport":"100","value":"Connected to fabricant-server incognito"}',true));
+	
+	//Сообщаем ему, что он инкогнито
+	$this->outgoingYouAreIncognito($connect);
 	
 	//Так как состояние изменилось отправляем сообщение монитору
 	$this->outgoingStateToMonitors();
@@ -293,7 +305,8 @@ protected function removeConnectIncognito($connect) {
 	$connectid=$this->getIdByConnect($connect);
 	$this->log("removeConnectIncognito. connectid=".$connectid);
 	unset($this->map_connectid_connect_incognito[strval($connectid)]);
-	
+	unset($this->map_incognito_connectid_userid[strval($connectid)]);
+	unset($this->map_incognito_connectid_created_at[strval($connectid)]);
 	unset($this->connects_incognito[array_search($connect, $this->connects_incognito)]);
 	
 	//Так как состояние изменилось отправляем сообщение монитору
@@ -326,12 +339,78 @@ protected function outgoingLoginDenied($connect){
 	$this->sendFrame($connect, $json);		
 }
 
+protected function outgoingYouAreIncognito($connect){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_SESSION;
+	$json["type"]=OUTGOING_YOU_ARE_INCOGNITO;
+	
+	$this->sendFrame($connect, $json);		
+}
+
+protected function outgoingInfoRequest($connect){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_SESSION;
+	$json["type"]=OUTGOING_INFO_REQUEST;
+	
+	$this->sendFrame($connect, $json);		
+}
+
+protected function outgoingLastAndroidVersion($connect){
+	
+ 	$json = array();
+    $json["transport"]=TRANSPORT_SESSION;
+	$json["type"]=OUTGOING_LAST_ANDROID_VERSION;
+	$json["versionName"]=1.2;
+	$json["versionCode"]=3;
+	$json["message"]="Вышла новая версия 1.2.\n- Корзина очищается после заказа, по умолчанию \n- Добавлены кнопки для ручной очистки корзины";
+	$json["title"]="Обновление Фабриканта";
+	
+	$this->sendFrame($connect, $json);		
+}
+
 protected function ProcessMessageSession($sender,$connects,$json) {
 	
-	$this->log("ProcessMessageSession. Sender.connectId=".$this->getIdByConnect($sender)." incognito, json=".json_encode($json));
+	$this->log("ProcessMessageSession. Sender.connectId=".$this->getIdByConnect($sender)." incognito, json=".json_encode($json,JSON_UNESCAPED_UNICODE));
 		
 	switch($json["type"]){
 		case INCOMING_LOGIN :
+			
+			//Запрещаем прямую отправку userid
+			if(isset($json["userid"])){
+				$this->log("ProcessMessageSession INCOMING_LOGIN direct userid=".$json["userid"]." catched");
+				unset($json["userid"]);
+			}
+			
+			if(isset($json["phone"]) && isset($json["password"])){
+				
+				$phone=filter_var($json["phone"],FILTER_VALIDATE_INT);
+				$password=$json["password"];
+				
+				try{
+				
+					if ($this->db_profile->checkLoginByPhone($phone, $password)) {
+						$user = $this->db_profile->getUserByPhone($phone);
+						$json["userid"]=$user["id"];
+					}else{
+						$this->log("ProcessMessageSession INCOMING_LOGIN incorrect phone or password");
+					}
+					
+				}catch(Exception $e){
+					$this->log("ProcessMessageSession INCOMING_LOGIN exception when process phone and password");
+				}
+			}
+			
+			if(!isset($json["userid"])){
+				$this->log("ProcessMessageSession INCOMING_LOGIN breaked cause userid unset");
+				return;
+			}
+			
+			if(!isset($json["last_timestamp"])){
+				$this->log("ProcessMessageSession INCOMING_LOGIN breaked cause last_timestamp missing");
+				return;
+			}
 			
 			$requested_userid=$json["userid"];
 			$last_timestamp=$json["last_timestamp"];
@@ -344,9 +423,36 @@ protected function ProcessMessageSession($sender,$connects,$json) {
 			//Если connect инкогнито
 			if($this->isConnectIncognito($sender)){
 				
-				if($this->isUserIdHasConnect($requested_userid)){//Если есть другой connect с таким же userid
-					//Отправляем проверочный пинг
-					$this->sendPing($this->getConnectByUserId($requested_userid),strval($this->getIdByConnect($sender)));
+				//Если есть другой connect с таким же userid
+				if( $this->isUserIdHasConnect($requested_userid) ){
+					
+					if( isset($this->session_ping_connectid[strval($this->getIdByConnect($sender))]) && 
+						( $this->session_ping_connectid[strval($this->getIdByConnect($sender))]==$this->getIdByConnect($this->getConnectByUserId($requested_userid)) )						
+						){
+						
+						//Если слишком быстро повторил запрос
+						if( time()-$this->session_ping_sent_at[strval($this->getIdByConnect($sender))]<=5 ){
+							$this->log("Connect. Failed SESSION_LOGIN. Too fast requests. connectid=".$this->getIdByConnect($sender).", userid=".$requested_userid.", last_timestamp=".$last_timestamp." old_connectid=".$this->getIdByConnect($sender));
+							return;
+						}
+						
+						//Удаляем записи пинга
+						unset($this->session_ping_connectid[strval($this->getIdByConnect($sender))]);
+						unset($this->session_ping_sent_at[strval($this->getIdByConnect($sender))]);
+	
+						$this->log("Connect. Accepted by SESSION_LOGIN. connectid=".$this->getIdByConnect($sender).", userid=".$requested_userid.", last_timestamp=".$last_timestamp." old_connectid=".$this->getIdByConnect($sender));
+					
+						$this->removeConnectIncognito($sender);
+						$this->removeConnect($this->getConnectByUserId($requested_userid));					
+						$this->putConnect($sender,$requested_userid);					
+						$this->onOpen($sender, $json);//вызываем пользовательский сценарий		
+
+						return;
+						
+					}else{					
+						//Отправляем проверочный пинг
+						$this->sendPing($this->getConnectByUserId($requested_userid),strval($this->getIdByConnect($sender)));						
+					}
 					return;
 				}else{
 				
@@ -362,6 +468,11 @@ protected function ProcessMessageSession($sender,$connects,$json) {
 			
 			
 		break;	
+		
+		case INCOMING_INFO:
+			$this->log("ProcessMessageSession INCOMING_INFO connectid=".$this->getIdByConnect($sender)." userid=".$this->getUserIdByConnect($sender)." versionName=".$json["versionName"]." versionCode=".$json["versionCode"]);
+			
+		break;
 		
 	}
 	
@@ -435,6 +546,22 @@ protected function getState(){
 		$map_connectid_connect_incognito[]=$item;
 	}
 	
+	$map_incognito_connectid_userid = array();	
+	foreach($this->map_incognito_connectid_userid as $incognito_connectid => $userid){
+		$item=array();
+		$item["incognito_connectid"]=$incognito_connectid;
+		$item["userid"]=$userid;
+		$map_incognito_connectid_userid[]=$item;
+	}
+	
+	$map_incognito_connectid_created_at = array();	
+	foreach($this->map_incognito_connectid_created_at as $incognito_connectid => $created_at){
+		$item=array();
+		$item["incognito_connectid"]=$incognito_connectid;
+		$item["created_at"]=$created_at;
+		$map_incognito_connectid_created_at[]=$item;
+	}
+	
 	//---------------------Session------------------------
 
 	$session_ping_connectid = array();	
@@ -454,6 +581,8 @@ protected function getState(){
 	$state["map_connectid_framecount"]=$map_connectid_framecount;
 	$state["connects_incognito"]=$connects_incognito;
 	$state["map_connectid_connect_incognito"]=$map_connectid_connect_incognito;
+	$state["map_incognito_connectid_userid"]=$map_incognito_connectid_userid;
+	$state["map_incognito_connectid_created_at"]=$map_incognito_connectid_created_at;
 	$state["session_ping_connectid"]=$session_ping_connectid;
 	
 	return $state;
@@ -491,7 +620,7 @@ protected function outgoingStateToMonitors(){
 
 protected function ProcessMessageMonitor($sender,$connects,$json) {
 	
-	$this->log("ProcessMessageMonitor. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json));
+	$this->log("ProcessMessageMonitor. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json,JSON_UNESCAPED_UNICODE));
 		
 	switch($json["type"]){
 		case INCOMING_STATE_REQUEST :	
@@ -597,20 +726,15 @@ protected function outgoingNotifyContractorProductsDelta($contractorid,$timestam
 	$json["type"]=OUTGOING_PRODUCTS_DELTA;
 	$json["products"]=$result;	
  	
+	$this->log("<<outgoingNotifyContractorProductsDelta contractorid=".$contractorid." timestamp=".$timestamp." :");
 	
-	// Listing users have changed since $timestamp 	
-	$users = $this->db_profile->getUsersInGroup($contractorid);	
-	
-	foreach($users as $user) {
-		$user_id=$user["userid"];
-		//If user connected then notify him
-		if( array_key_exists(strval($user_id), $this->map_userid_connect) ){
-			$connect=$this->getConnectByUserId($user_id);
-			
-			$this->sendFrame($connect, $json);
-		}
-	
+	foreach($this->connects as $connect) {
+		
+		$this->sendFrame($connect, $json);
+		
 	}
+	$this->log(">>");
+	
 		      
 }
 
@@ -643,20 +767,12 @@ protected function outgoingNotifyProductChanged($productid){
 	$product=$this->db_fabricant->getProductById($productid);	
 	$contractorid=$product["contractorid"];
 	
-	//Get users list of contractor
-    $users = $this->db_profile->getUsersInGroup($contractorid);
- 		
-	$this->log("<<outgoingNotifyProductChanged productid=".$productid." :");
+	$this->log("<<outgoingNotifyProductChanged productid=".$productid." contractorid=".$contractorid." :");
 	
-	foreach($users as $user) {
-		$user_id=$user["userid"];
-		//If user connected then notify him
-		if( array_key_exists(strval($user_id), $this->map_userid_connect) ){
-			$connect=$this->getConnectByUserId($user_id);
-			
-			$this->outgoingProduct($connect,$product);
-		}
-	
+	foreach($this->connects as $connect) {
+		
+		$this->outgoingProduct($connect,$product);
+		
 	}
 	$this->log(">>");
 	
@@ -731,7 +847,7 @@ protected function outgoingRemoteReset($connect){
 
 protected function ProcessMessageFabricant($sender,$connects,$json) {
 	
-	$this->log("ProcessMessageFabricant. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json));
+	$this->log("ProcessMessageFabricant. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json,JSON_UNESCAPED_UNICODE));
 		
 	switch($json["type"]){
 		case INCOMING_CHECK_CONNECTION :	
@@ -1007,7 +1123,7 @@ protected function outgoingNotifyGroupUsersChanged($groupid,$changed_users){
 
 protected function groupOperationAddUsers($senderid,$groupid,$users){	
 	
-	$this->log("groupOperationAddUsers. senderid=".$senderid." groupid=".$groupid." users=".json_encode($users)); 												
+	$this->log("groupOperationAddUsers. senderid=".$senderid." groupid=".$groupid." users=".json_encode($users,JSON_UNESCAPED_UNICODE)); 												
 	
     //Presently all user consists in group can do that operation. Status: 0,1,2
 	$current_user_status=$this->db_profile->getUserStatusInGroup($groupid,$senderid);			
@@ -1064,7 +1180,7 @@ protected function groupOperationAddUsers($senderid,$groupid,$users){
 		$this->sendSMS("Group".$groupid."Sender".$senderid."AddUser".$userid);		
 	}
 	
-	$this->log("groupOperationAddUsers. Users added. added_users=".json_encode($changed_users));
+	$this->log("groupOperationAddUsers. Users added. added_users=".json_encode($changed_users,JSON_UNESCAPED_UNICODE));
 						
 	$this->outgoingNotifyGroupUsersChanged($groupid,$changed_users);
 	
@@ -1092,7 +1208,7 @@ protected function groupOperationSave($senderid,$groupid,$json){
 		$groups=$this->db_profile->getGroupById($groupid);		
 		$json_info=json_decode($groups[0]["info"],true);
 		$json_info["name"]["text"]=$name;		
-		$this->db_profile->changeGroupInfo(json_encode($json_info),$groupid);	
+		$this->db_profile->changeGroupInfo(json_encode($json_info,JSON_UNESCAPED_UNICODE),$groupid);	
 	}
 	
 	if(isset($json["address"])){
@@ -1113,9 +1229,9 @@ protected function groupOperationSave($senderid,$groupid,$json){
 		$groups=$this->db_profile->getGroupById($groupid);		
 		$json_info=json_decode($groups[0]["info"],true);
 		$json_info["name_full"]["text"]=$name_full;		
-		$this->db_profile->changeGroupInfo(json_encode($json_info),$groupid);	
+		$this->db_profile->changeGroupInfo(json_encode($json_info,JSON_UNESCAPED_UNICODE),$groupid);	
 		
-		$this->db_profile->changeGroupInfo(json_encode($json_info),$groupid);	
+		$this->db_profile->changeGroupInfo(json_encode($json_info,JSON_UNESCAPED_UNICODE),$groupid);	
 	}
 	
 	$this->log("groupOperationSave. Group saved. groupid=".$groupid);
@@ -1186,7 +1302,7 @@ protected function groupOperationUserStatus($senderid,$userid,$groupid,$status){
 
 protected function ProcessMessageProfile($sender,$connects,$json) {
 	
-	$this->log("ProcessMessageProfile. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json));
+	$this->log("ProcessMessageProfile. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json,JSON_UNESCAPED_UNICODE));
 	
 	switch($json["type"]){
 		case INCOMING_FRIEND_OPERATION :			
@@ -1288,12 +1404,6 @@ protected function ProcessMessageProfile($sender,$connects,$json) {
 protected function ProcessConsoleOperation($connect,$info) {
 	
 	$this->log("ProcessConsoleOperation. info = ".json_encode($info,JSON_UNESCAPED_UNICODE));
-	
-	//Удаляем последствие addslashes из WebsocketClient 
-	foreach($info as $key => $value)
-	{				
-		$info[$key]=json_decode($value);				
-	}	
 	
 	switch($info["operation"]){
 		case CONSOLE_OPERATION_USER_CHANGED:
@@ -1520,6 +1630,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 					$name=$info["name"];
 					$name_full=$info["name_full"];
 					$summary=$info["summary"];
+					$alias=$info["alias"];
 					$for_all_customers=$info["for_all_customers"];
 					
 					if(!$this->db_profile->isUserInGroup($contractorid,$senderid)){				
@@ -1532,7 +1643,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 						case SALE_TYPE_SALE:
 							$rate=$info["rate"];	
 							$cash_only=$info["cash_only"];
-							$saleid=$this->db_fabricant->createSaleRate($senderid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$rate,$cash_only);
+							$saleid=$this->db_fabricant->createSaleRate($senderid,$contractorid,$label,$name,$name_full,$summary,$alias,$for_all_customers,$rate,$cash_only);
 							break;
 							
 						case SALE_TYPE_DISCOUNT:
@@ -1541,12 +1652,12 @@ protected function ProcessConsoleOperation($connect,$info) {
 							$max_summ=$info["max_summ"];
 							$cash_only=$info["cash_only"];
 							$for_all_products=$info["for_all_products"];
-							$saleid=$this->db_fabricant->createDiscount($senderid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$for_all_products,$rate,$min_summ,$max_summ,$cash_only);
+							$saleid=$this->db_fabricant->createDiscount($senderid,$contractorid,$label,$name,$name_full,$summary,$alias,$for_all_customers,$for_all_products,$rate,$min_summ,$max_summ,$cash_only);
 							break;
 							
 						case SALE_TYPE_INSTALLMENT:
 							$time_notification=$info["time_notification"];				
-							$saleid=$this->db_fabricant->createInstallment($senderid,$contractorid,$label,$name,$name_full,$summary,$for_all_customers,$time_notification);
+							$saleid=$this->db_fabricant->createInstallment($senderid,$contractorid,$label,$name,$name_full,$summary,$alias,$for_all_customers,$time_notification);
 							break;						
 					}
 					
@@ -1667,13 +1778,15 @@ protected function ProcessConsoleOperation($connect,$info) {
 					
 					$text_object=array();
 					$text_object["text"]=$info["summary"];
-					$condition["summary"]=$text_object;				
+					$condition["summary"]=$text_object;			
+
+					$condition["alias"]=$info["alias"];						
 					
 					$condition["for_all_customers"]=$info["for_all_customers"];	
 					
 					//set specific condition params
 					$type=$condition["type"];					
-					switch($type){
+					switch($type){
 						case SALE_TYPE_SALE:
 							$condition["rate"]=$info["rate"];
 							$condition["cash_only"]=$info["cash_only"];
@@ -1981,7 +2094,7 @@ protected function outgoingStopBroadcast($connect) {
 }
 
 protected function outgoingCoors($connect, $json) {
-	$this->log("outgoingCoors. connectId=".$this->getIdByConnect($connect).", json=".json_encode($json));
+	$this->log("outgoingCoors. connectId=".$this->getIdByConnect($connect).", json=".json_encode($json,JSON_UNESCAPED_UNICODE));
 	
 	$json["transport"]=TRANSPORT_MAP;
 	$json["type"]=OUTGOING_COORS;
@@ -2067,7 +2180,7 @@ protected function removeReciever($userid) {
 }
 
 protected function resendCoorsToRecievers($sender,$sender_userid,$coors){
-	$this->log("resendCoorsToRecievers. sender.connectId=".$this->getIdByConnect($sender).", sender_userid=".$sender_userid.", coors=".json_encode($coors));
+	$this->log("resendCoorsToRecievers. sender.connectId=".$this->getIdByConnect($sender).", sender_userid=".$sender_userid.", coors=".json_encode($coors,JSON_UNESCAPED_UNICODE));
 	$resent_count=0;//Счетчик количества принявших ресиверов
 	
 	foreach($this->recievers as $reciever_userid=>$reciever){
@@ -2141,7 +2254,7 @@ private function distanceBetween($ax,$ay,$bx,$by){
 
 protected function ProcessMessageMap($sender,$connects,$json) {
 	
-	$this->log("ProcessMessageMap. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json));
+	$this->log("ProcessMessageMap. Sender.connectId=".$this->getIdByConnect($sender).", Sender.userid=".$this->getUserIdByConnect($sender).", json=".json_encode($json,JSON_UNESCAPED_UNICODE));
 	
 	switch($json["type"]){
 		case INCOMING_START_RECIEVE :			
@@ -2292,9 +2405,10 @@ public function log($message){
 }
 
 //-------Стандартные функции протокола WebSocket----------
-  
+
 protected function onOpen($connect, $info) {
-		
+	
+	
 	//Начало транзакции дельты
 	$this->sendFrame($connect, json_decode('{"transaction":"begin"}',true));
 	
@@ -2382,6 +2496,10 @@ protected function onOpen($connect, $info) {
 		$this->outgoingState($connect);
 	}
 	
+	$this->outgoingLastAndroidVersion($connect);
+	
+	$this->outgoingInfoRequest($connect);
+	
 }
 
 protected function onClose($connect) {
@@ -2423,14 +2541,15 @@ protected function onMessage($sender,$connects,$data) {
 		$this->log("incomingPong. payload=".$decoded_data['payload']." connectId=".$this->getIdByConnect($sender)." userId=".$userid." timestamp=".time());
 		
 		//Если pong получен от правильного connect-а
-		if($this->session_ping_connectid[$decoded_data['payload']]==$this->getIdByConnect($sender)){
+		if(isset($this->session_ping_connectid[$decoded_data['payload']])&&($this->session_ping_connectid[$decoded_data['payload']]==$this->getIdByConnect($sender))){
 			
 			
 			unset($this->session_ping_connectid[$decoded_data['payload']]);
+			unset($this->session_ping_sent_at[$decoded_data['payload']]);
 			
 			
 			//Получен проверочный понг SESSION_LOGIN, т.е. уже существующий user активен
-			if($this->isConnectIdIncognito($decoded_data['payload'])){
+			if( $this->isConnectIdIncognito($decoded_data['payload']) && (!$this->isConnectIncognito($sender)) && ($this->map_incognito_connectid_userid[$decoded_data['payload']]==$this->getUserIdByConnect($sender)) ){
 				
 				$this->outgoingLoginDenied($this->getConnectIncognitoById($decoded_data['payload']));
 				
@@ -2550,6 +2669,7 @@ protected function sendPing($connect,$payload) {
 	$this->log("sendPing. userid=".$userid." connectid=".$connectid." payload=".$payload);
 	
 	$this->session_ping_connectid[$payload]=$connectid;
+	$this->session_ping_sent_at[$payload]=time();
 	
 	fwrite($connect, $this->encode($payload,"ping"));
 }
@@ -2600,7 +2720,60 @@ function handshake($connect){
 	
     //$this->log("handshake info : ".implode('  ',$info));
 	//$this->log("handshake end");
-
+	
+	
+	//Удаляем последствие json_encode ковычек из WebsocketClient
+	if( isset($info["console"]) ){
+		foreach($info as $key => $value)
+		{				
+			$info[$key]=json_decode($value);				
+		}	
+	}
+	
+	//Пресекаем прямую передачу userid и senderid
+	if(isset($info["userid"])){
+		unset($info["userid"]);
+	}	
+	if(isset($info["senderid"])){
+		unset($info["senderid"]);
+	}
+	
+	if(isset($info["phone"]) && isset($info["password"])){
+		
+		$phone=filter_var($info["phone"],FILTER_VALIDATE_INT);
+		$password=$info["password"];
+		
+		try{
+		
+			if ($this->db_profile->checkLoginByPhone($phone, $password)) {
+				$user = $this->db_profile->getUserByPhone($phone);
+				$info["userid"]=$user["id"];
+			}else{
+				$this->log("handshake incorrect phone or password");
+			}
+			
+		}catch(Exception $e){
+			$this->log("handshake exception when process phone and password");
+		}
+	}else if(isset($info["Api-Key"])){
+		
+		try{
+			$api_key=$info['Api-Key'];
+			
+			if ($this->db_profile->isValidApiKey($api_key)) {		
+				$info["userid"]=$this->db_profile->getUserId($api_key)["id"];
+				$info["senderid"]=$info["userid"];
+				$this->log("handshake Api-Key=".$api_key." accepted userid=".$info["userid"]);
+			}else{
+				$this->log("handshake incorrect Api-Key=".$api_key);
+			}
+			
+		}catch(Exception $e){
+			$this->log("handshake exception when process Api-Key=");
+		}
+	}
+	
+	
     return $info;
 }
 

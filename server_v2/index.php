@@ -17,6 +17,7 @@ $app = new \Slim\Slim();
  
 // User id from db - Global Variable
 $user_id = NULL;
+$api_key = NULL;
 
 /**
  * It used to Slim testing during installation the server 
@@ -26,6 +27,15 @@ $user_id = NULL;
 //		$body=file_get_contents("http://sms.ru/sms/send?api_id=A73F3F48-2F27-8D8D-D7A2-6AFF64E4F744&to=".$phone."&from=fabricant&text=".$text);
 //		echo $body;
 //});
+
+$app->get('/test', function () {
+		
+		$db=new DbHandlerProfile();
+		
+		$body=$db->getAllGroups();
+		
+		echoResponse(200,$body);
+});
 
 /**
  * Echoing json response to client
@@ -175,7 +185,7 @@ $app->post('/register', function() use ($app) {
             $name = $app->request->post('name');
 			$surname = $app->request->post('surname');
 			$patr = $app->request->post('patr');
-			$email = $app->request->post('email');
+			$email = "missing_email@fabricant.pro";//$app->request->post('email');
 			
             $phone = $app->request->post('phone');
 			$code = $app->request->post('code');
@@ -188,6 +198,8 @@ $app->post('/register', function() use ($app) {
 			//Validating email
 			if(!empty($email)){
 				validateEmail($email);
+			}else{
+				$email="missing_email@fabricant.pro";
 			}
 			
 			$db = new DbHandlerProfile();
@@ -277,23 +289,27 @@ function authenticate(\Slim\Route $route) {
     // Verifying 'Api-Key' Header
     if (isset($headers['Api-Key'])) {
         $db = new DbHandlerProfile();
- 
-        // get the api key
-        $api_key = $headers['Api-Key'];
+		
         // validating api key
-        if (!$db->isValidApiKey($api_key)) {
-            // api key is not present in users table
+        if (!$db->isValidApiKey($headers['Api-Key'])) {
+            		
+			// api key is not present in users table
             $response["error"] = true;
             $response["message"] = "Access Denied. Invalid Api key";
             $response["success"] = 0;
             echoResponse(200, $response);
             $app->stop();
         } else {
-            global $user_id;
-            // get user primary key id
-            $user = $db->getUserId($api_key);
-            if ($user != NULL)
+		
+			$user = $db->getUserId($headers['Api-Key']);
+			
+            if ($user != NULL){
+				global $api_key;
+				global $user_id;   
                 $user_id = $user["id"];
+				
+				$api_key = $db->getApiKeyById($user_id)["api_key"];
+			}
         }
     } else {
         // api key is missing in header
@@ -766,6 +782,12 @@ $app->post('/orders/create', 'authenticate', function () use ($app)  {
 		$json_order = $app->request->post('order');		
 		$order=json_decode($json_order,true);
 		
+		if(!isset($order["contractorid"]) || !isset($order["customerid"])){
+			throw new Exception("Missing contractorid or customerid in order");
+		}
+		
+		checkUserPermissionToGroups($order["contractorid"],$order["customerid"]);
+		
 		$record=makeOrderRecord($order);
 		
 		//Console command
@@ -812,7 +834,7 @@ $app->post('/orders/update', 'authenticate', function () use ($app)  {
 		
 	$response = array();
 	
-	try{
+	//try{
 		
 		$json_order = $app->request->post('order');		
 		$order=json_decode($json_order,true);
@@ -865,15 +887,18 @@ $app->post('/orders/update', 'authenticate', function () use ($app)  {
 		$response['order'] = $db_fabricant->getOrderById($old_order_id);
 		$response['success'] = 1;
         
-	} catch (Exception $e) {
-        
-		$response['error'] = true;
-		$response['message'] = $e->getMessage();
-		$response['success'] = 0;
-	}
+	//} catch (Exception $e) {
+    //    
+	//	$response['error'] = true;
+	//	$response['message'] = $e->getMessage();
+	//	$response['success'] = 0;
+	//}
 	
 	echoResponse(200, $response);
-	sendSMS("UpdateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
+	if($response["success"]==1){
+		sendSMS("UpdateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
+	}
+	
 });
 
 $app->post('/orders/accept', 'authenticate', function () use ($app)  {
@@ -958,21 +983,25 @@ $app->post('/orders/remove', 'authenticate', function () use ($app)  {
 		
 		$order=$db_fabricant->getOrderById($orderid);
 		
+		if( ($order["status"]==$db_fabricant::STATUS_ORDER_HIDDEN) ){
+			throw new Exception('Order status is not correct for update operation');
+		}
+		
 		$user_status_in_contractor=$db_profile->getUserStatusInGroup($order["contractorid"],$user_id);
 		
 		if(($user_status_in_contractor!=1)&&($user_status_in_contractor!=2)){
 			$user_status_in_customer=$db_profile->getUserStatusInGroup($order["customerid"],$user_id);
-			if(($user_status_in_customer!=1)&&($user_status_in_customer!=2)){
+			if(($user_status_in_customer!=1)&&($user_status_in_customer!=2)&&($user_status_in_customer!=0)){
 				throw new Exception('User have no permission');
 			}else{
 				if( ($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING) ){
 					throw new Exception('Order status is not correct for remove operation');
 				}
 			}
-		}else{		
-			if( ($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING)&&($order["status"]!=$db_fabricant::STATUS_ORDER_CONFIRMED)&&($order["status"]!=$db_fabricant::STATUS_ORDER_ONWAY) ){
+		}
+		
+		if( ($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING)&&($order["status"]!=$db_fabricant::STATUS_ORDER_CONFIRMED)&&($order["status"]!=$db_fabricant::STATUS_ORDER_ONWAY) ){
 				throw new Exception('Order status is not correct for remove operation');
-			}
 		}
 		
 		$record=json_decode($order["record"],true);				
@@ -1028,6 +1057,10 @@ $app->post('/orders/make_paid', 'authenticate', function () use ($app)  {
 		$orderid = $app->request->post('orderid');
 		
 		$order=$db_fabricant->getOrderById($orderid);
+		
+		if( ($order["status"]==$db_fabricant::STATUS_ORDER_HIDDEN) ){
+			throw new Exception('Order status is not correct for update operation');
+		}
 		
 		$user_status_in_contractor=$db_profile->getUserStatusInGroup($order["contractorid"],$user_id);
 		
@@ -1132,6 +1165,90 @@ $app->post('/orders/hide', 'authenticate', function () use ($app)  {
 
 });
 
+$app->post('/orders/create_minor', 'authenticate', function () use ($app)  {
+	
+	// check for required params
+    verifyRequiredParams(array('contractorid','customerid'));
+	
+	
+	$db_profile = new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+	
+	global $user_id;	
+		
+	$response = array();
+	
+	$record=array();
+	
+	//try{	
+		
+		$contractorid = $app->request->post('contractorid');	
+		$customerid = $app->request->post('customerid');
+				
+		if(!isset($contractorid) || !isset($customerid)){
+			throw new Exception("Missing contractorid or customerid in order");
+		}
+		
+		$user=$db_profile->getUserById($user_id);
+		
+		$order=array();
+		$order['contractorid']=$contractorid;
+		$order['customerid']=$customerid;
+		$order['phone']=$user["phone"];
+		$order['comment']="Minor order userid=".$user_id." username=".$user["name"];
+		
+		checkUserPermissionToGroups($contractorid,$customerid);
+		
+		$record=makeOrderRecord($order);
+		
+		//Console command to create
+		$json_header=array();
+		$json_header["console"]="v2/index/orders/create_minor";
+		$json_header["operation"]=M_CONSOLE_OPERATION_ORDER;
+		$json_header["order_operationid"]=M_ORDEROPERATION_CREATE;
+		$json_header["senderid"]=$user_id;
+		$json_header["record"]=json_encode($record,JSON_UNESCAPED_UNICODE);
+		$console_response=consoleCommand($json_header);
+		
+		//Preparing record to hide operation
+		$order=$db_fabricant->getOrderById($console_response["orderid"]);
+		$record=json_decode($order["record"],true);				
+		$user=$db_profile->getUserById($user_id);		
+		$record["hideUserId"]=$user_id;
+		$record["hideUserName"]=$user["name"];
+		$record["hideComment"]="Minor created order hiding";
+		$record["hidden"]=true;
+				
+		//Console command to hide
+		$json_header=array();
+		$json_header["console"]="v2/index/orders/hide_minor";
+		$json_header["operation"]=M_CONSOLE_OPERATION_ORDER;
+		$json_header["order_operationid"]=M_ORDEROPERATION_HIDE;
+		$json_header["senderid"]=$user_id;
+		$json_header["record"]=json_encode($record,JSON_UNESCAPED_UNICODE);
+		$console_response=consoleCommand($json_header);
+		
+		
+		$response['error'] = false;
+		$response['message'] = "Minor order has been created";
+		$response['order'] = $db_fabricant->getOrderById($record["id"]);
+		$response['success'] = 1;
+		
+        
+	/*} catch (Exception $e) {
+        
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+		$response['make_record_logs'] = "make_record_logs: ".implode (" , ",$record["make_record_logs"]);
+	}*/
+	
+	echoResponse(200, $response);
+	
+	sendSMS("CreateMinorOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
+
+});
+
 //-------------Orders Utils------------------------
 
 function makeOrderRecord($order){
@@ -1159,7 +1276,7 @@ function makeOrderRecord($order){
 		if($customer["type"]!=1){
 			throw new Exception('Customer type is incorrect');
 		}
-		if($customer["status"]!=1){
+		if(($customer["status"]!=1)&&($customer["status"]!=2)){
 			throw new Exception('Customer status is incorrect');
 		}
 		
@@ -1189,11 +1306,15 @@ function makeOrderRecord($order){
 		$logs[]="price_installment_name=".$price_installment_name;
 		
 		//Basket подготовка корзины: чистим ее от всякого неодеквата и применяем rate-скидки к продуктам
-		$logs[]="Basket";		
-		$items=$order["items"];
-		if(count($items)<1){
-			throw new Exception('items are not found');
+		$logs[]="Basket";	
+		
+		
+		if(isset($order["items"])){
+			$items=$order["items"];		
+		}else{
+			$items=array();
 		}
+		
 		$basket=array();
 		$basket_products=array();
 		
@@ -1205,6 +1326,8 @@ function makeOrderRecord($order){
 				if($product["contractorid"]!=$contractorid)continue;//Another contractor product
 				if($product["status"]!=2)continue;//Product status incorrect					
 				if($count==0)continue;//Don't add empty products
+				
+				$item=array();
 				
 				if(isset($price_installment_name)){
 					$item["price"]=getProductPriceInstallmentValue($price_installment_name,$product);					
@@ -1218,6 +1341,7 @@ function makeOrderRecord($order){
 				$item["count"]=$count;
 				$item["amount"]=$item["price"]*$count;
 				
+				$sale=null;
 				$sale=getProductSale($product,$contractor,$customer,$installment);
 				if(isset($sale)){
 					
@@ -1231,7 +1355,7 @@ function makeOrderRecord($order){
 					$sale_info["label"]=$sale["label"];
 					$sale_info["rate"]=$sale["rate"];
 					$sale_info["amount_no_sale"]=$item["amount"];
-					$sale_info["price_with_sale"]=ceil(round($item["price"]*$sale["rate"],4));
+					$sale_info["price_with_sale"]=round($item["price"]*$sale["rate"],4);
 					$sale_info["value"]=$save_value;
 					$sale_info["cash_only"]=$sale["cash_only"];
 					$sale_info["for_all_customers"]=$sale["for_all_customers"];
@@ -1345,6 +1469,25 @@ function makeOrderRecord($order){
 		return $record;
 }
 
+function checkUserPermissionToGroups($contractorid,$customerid){
+
+		$db_profile = new DbHandlerProfile();
+		
+		global $user_id;	
+				
+		$user_status_in_contractor=$db_profile->getUserStatusInGroup($contractorid,$user_id);
+		
+		if(($user_status_in_contractor!=1)&&($user_status_in_contractor!=2)){
+		
+			$user_status_in_customer=$db_profile->getUserStatusInGroup($customerid,$user_id);
+			
+			if(($user_status_in_customer!=1)&&($user_status_in_customer!=2)&&($user_status_in_customer!=0)){
+				throw new Exception('User have no permission');
+			}
+		}
+		
+}
+
 function checkUserPermissionToOrder($old_order_id,$new_order){
 
 		$db_profile = new DbHandlerProfile();
@@ -1358,6 +1501,10 @@ function checkUserPermissionToOrder($old_order_id,$new_order){
 			throw new Exception('orderid  is not correct');
 		}
 		
+		if( ($order["status"]==$db_fabricant::STATUS_ORDER_HIDDEN) ){
+			throw new Exception('Order status is not correct for update operation');
+		}
+		
 		$contractorid=$order["contractorid"];
 		$customerid=$order["customerid"];
 		
@@ -1367,18 +1514,13 @@ function checkUserPermissionToOrder($old_order_id,$new_order){
 		
 			$user_status_in_customer=$db_profile->getUserStatusInGroup($customerid,$user_id);
 			
-			if(($user_status_in_customer!=1)&&($user_status_in_customer!=2)){
+			if(($user_status_in_customer!=1)&&($user_status_in_customer!=2)&&($user_status_in_customer!=0)){
 				throw new Exception('User have no permission');
-			}else{
-				if( ($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING) ){
-					throw new Exception('Order status is not correct for update operation');
-				}
 			}
-			
-		}else{		
-			if( ($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING)&&($order["status"]!=$db_fabricant::STATUS_ORDER_CONFIRMED)&&($order["status"]!=$db_fabricant::STATUS_ORDER_ONWAY) ){
-				throw new Exception('Order status is not correct for remove operation');
-			}
+		}
+		
+		if( ($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING)&&($order["status"]!=$db_fabricant::STATUS_ORDER_CONFIRMED)&&($order["status"]!=$db_fabricant::STATUS_ORDER_ONWAY)&&($order["status"]!=$db_fabricant::STATUS_ORDER_CANCELED) ){
+			throw new Exception('Order status is not correct for this operation');
 		}
 		
 		if($new_order["contractorid"]!=$contractorid){
@@ -1585,6 +1727,7 @@ $app->post('/sales/create', 'authenticate', function () use ($app)  {
 		$json_header["name"] = $app->request->post('name');
 		$json_header["name_full"] = $app->request->post('name_full');
 		$json_header["summary"] = $app->request->post('summary');
+		$json_header["alias"] = $app->request->post('alias');
 		$json_header["for_all_customers"] = filter_var($app->request->post('for_all_customers'),FILTER_VALIDATE_BOOLEAN);
 		
 		if(!isset($json_header["type"])){
@@ -1731,6 +1874,7 @@ $app->post('/sales/update', 'authenticate', function () use ($app)  {
 		$json_header["name"] = $app->request->post('name');
 		$json_header["name_full"] = $app->request->post('name_full');
 		$json_header["summary"] = $app->request->post('summary');
+		$json_header["alias"] = $app->request->post('alias');
 		$json_header["for_all_customers"] = filter_var($app->request->post('for_all_customers'),FILTER_VALIDATE_BOOLEAN);
 		
 		if(!isset($json_header["saleid"])){
@@ -1938,7 +2082,10 @@ define("M_SALE_TYPE_INSTALLMENT", 6);
 
 
 function consoleCommand($header_json){
-
+	
+	global $api_key;
+	$header_json["Api-Key"]=$api_key;
+	
 	$client = new WebsocketClient;
 	
 	$response="{'message': 'ConsoleCommand. begin', 'status':'0'}";
