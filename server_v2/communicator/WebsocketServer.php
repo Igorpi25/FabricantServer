@@ -130,6 +130,7 @@ public $connects_incognito=array();
 public $map_connectid_connect_incognito=array();
 public $map_incognito_connectid_userid=array();
 public $map_incognito_connectid_created_at=array();
+public $map_incognito_connectid_last_timestamp=array();
 public $session_ping_connectid=array();
 public $session_ping_sent_at=array();
 
@@ -215,7 +216,7 @@ public function Start(){
 					if($this->isUserIdHasConnect($userid)){
 						
 						$this->log("Connect. Accepted. connectid=".$this->getIdByConnect($connect).", userid=".$userid." already exists with connectid=".$this->getIdByConnect($this->getConnectByUserId($userid)).", last_timestamp=".$last_timestamp);
-						$this->putConnectIncognito($connect,$userid);
+						$this->putConnectIncognito($connect,$userid,$last_timestamp);
 						
 						//Отправляем проверочный пинг
 						$this->sendPing($this->getConnectByUserId($userid),strval($this->getIdByConnect($connect)));
@@ -228,9 +229,10 @@ public function Start(){
 					}	
 				
 				}else{ //Инкогнито
-				
+					
+					
 					$this->log("Connect. Accepted. connectid=".$this->getIdByConnect($connect).", userid = incognito");
-					$this->putConnectIncognito($connect,$userid);
+					$this->putConnectIncognito($connect,0,0);
 					
 				}
 	        }
@@ -283,13 +285,14 @@ public function Stop(){
 
 //--------------------Функции протокола Session ---------------------
 
-protected function putConnectIncognito($connect,$userid) {
+protected function putConnectIncognito($connect,$userid,$last_timestamp) {
 	$connectid=$this->getIdByConnect($connect);
-	$this->log("putConnectIncognito. connectid=".$connectid." userid=".$userid);
+	$this->log("putConnectIncognito. connectid=".$connectid." userid=".$userid." last_timestamp=".$last_timestamp);
 	array_push($this->connects_incognito,$connect);
 	$this->map_connectid_connect_incognito[strval($connectid)]=$connect;
 	$this->map_incognito_connectid_userid[strval($connectid)]=$userid;
 	$this->map_incognito_connectid_created_at[strval($connectid)]=date('Y-m-d H:i:s',time());
+	$this->map_incognito_connectid_last_timestamp[strval($connectid)]=$last_timestamp;
 	
 	$this->sendFrame($connect, json_decode('{"transport":"100","value":"Connected to fabricant-server incognito"}',true));
 	
@@ -307,6 +310,7 @@ protected function removeConnectIncognito($connect) {
 	unset($this->map_connectid_connect_incognito[strval($connectid)]);
 	unset($this->map_incognito_connectid_userid[strval($connectid)]);
 	unset($this->map_incognito_connectid_created_at[strval($connectid)]);
+	unset($this->map_incognito_connectid_last_timestamp[strval($connectid)]);
 	unset($this->connects_incognito[array_search($connect, $this->connects_incognito)]);
 	
 	//Так как состояние изменилось отправляем сообщение монитору
@@ -362,9 +366,9 @@ protected function outgoingLastAndroidVersion($connect){
  	$json = array();
     $json["transport"]=TRANSPORT_SESSION;
 	$json["type"]=OUTGOING_LAST_ANDROID_VERSION;
-	$json["versionName"]=1.2;
-	$json["versionCode"]=3;
-	$json["message"]="Вышла новая версия 1.2.\n- Корзина очищается после заказа, по умолчанию \n- Добавлены кнопки для ручной очистки корзины";
+	$json["versionName"]=1.3;
+	$json["versionCode"]=4;
+	$json["message"]="Вышла новая версия 1.3.\n- Возможность свернуть историю заказов. В свернутом виде видны заказы в обработке и заказы за последний день, остальные заказы не видны \n- Более стабильная работа по мобильной сети";
 	$json["title"]="Обновление Фабриканта";
 	
 	$this->sendFrame($connect, $json);		
@@ -432,7 +436,7 @@ protected function ProcessMessageSession($sender,$connects,$json) {
 						
 						//Если слишком быстро повторил запрос
 						if( time()-$this->session_ping_sent_at[strval($this->getIdByConnect($sender))]<=5 ){
-							$this->log("Connect. Failed SESSION_LOGIN. Too fast requests. connectid=".$this->getIdByConnect($sender).", userid=".$requested_userid.", last_timestamp=".$last_timestamp." old_connectid=".$this->getIdByConnect($sender));
+							$this->log("Connect. Failed SESSION_LOGIN. Too often requests. connectid=".$this->getIdByConnect($sender).", userid=".$requested_userid.", last_timestamp=".$last_timestamp." old_connectid=".$this->getIdByConnect($sender));
 							return;
 						}
 						
@@ -442,6 +446,8 @@ protected function ProcessMessageSession($sender,$connects,$json) {
 	
 						$this->log("Connect. Accepted by SESSION_LOGIN. connectid=".$this->getIdByConnect($sender).", userid=".$requested_userid.", last_timestamp=".$last_timestamp." old_connectid=".$this->getIdByConnect($sender));
 					
+						$json["last_timestamp"]=$this->map_incognito_connectid_last_timestamp[strval($this->getIdByConnect($sender))];
+						
 						$this->removeConnectIncognito($sender);
 						$this->removeConnect($this->getConnectByUserId($requested_userid));					
 						$this->putConnect($sender,$requested_userid);					
@@ -458,6 +464,8 @@ protected function ProcessMessageSession($sender,$connects,$json) {
 				
 					$this->log("Connect. Accepted by SESSION_LOGIN. connectid=".$this->getIdByConnect($sender).", userid=".$requested_userid.", last_timestamp=".$last_timestamp);
 					
+					$json["last_timestamp"]=$this->map_incognito_connectid_last_timestamp[strval($this->getIdByConnect($sender))];
+						
 					$this->removeConnectIncognito($sender);
 					$this->putConnect($sender,$requested_userid);					
 					$this->onOpen($sender, $json);//вызываем пользовательский сценарий					
