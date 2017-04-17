@@ -175,34 +175,48 @@ $app->post('/login', function() use ($app) {
 });
 //--------------------Admin panel----------------------------
 /**
- * Listing all groups of user (POST method, datatables)
+ * Listing all users (POST method, datatables)
  * method POST
- * url /groups/:id
+ * url /users/all
  */
-$app->post('/groups/dt/:id', 'authenticate', function($id) use ($app) {
-	// listing all groups
+$app->post('/users/all/dt', 'authenticate', function() use ($app) {
 	
 	global $user_id;
-	
-	
-	
+
 	$db = new DbHandlerProfile();
-	$groups = $db->getGroupsOfUser($id);
+	$users = $db->getAllUsersForMonitor();
 	$response = array();
-	if ($groups != NULL || empty($groups)) {
-		$data = array();
-		foreach ($groups as $group) {
-			if ($group["type"] == 1)
-				$data[] = $group;
-		}
+	if ($users != NULL || empty($users)) {
 		$response["draw"] = intval(1);
-		$response["recordsTotal"] = intval(10);
-		$response["recordsFiltered"] = intval(10);
-		$response["data"] = $data;
+		$response["recordsTotal"] = intval(count($users));
+		$response["recordsFiltered"] = intval(count($users));
+		$response["data"] = $users;
 	}
 	else {
 		$response["error"] = true;
-		$response["message"] = "Failed to get groups of user. Please try again";
+		$response["message"] = "Failed to get users. Please try again";
+	}
+	echoResponse(200, $response);
+});
+/**
+ * Listing all groups of user (POST method)
+ * method POST
+ * url /users/groups/:id
+ */
+$app->post('/users/groups/:id', 'authenticate', function($id) use ($app) {
+
+	global $user_id;
+
+	$db = new DbHandlerProfile();
+	$groups = $db->getGroupsOfUser($id);
+	$response = array();
+	if ($groups) {
+		$response["error"] = false;
+		$response["data"] = $groups;
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to get user groups. Please try again";
 	}
 	echoResponse(200, $response);
 });
@@ -210,96 +224,22 @@ $app->post('/groups/dt/:id', 'authenticate', function($id) use ($app) {
 /**
  * Listing all users in group
  * method POST
- * url /groupusers/:contractorid
+ * url /groups/users/:contractorid
  */
-$app->post('/groupusers/:contractorid', function($contractorid) use ($app) {
-	// check for required params
-    verifyRequiredParams(array('shopid'));
-	// reading post params
-    $shopid = $app->request->post('shopid');
-	// listing all users of group
+$app->post('/groups/users/:contractorid', 'authenticate', function($contractorid) use ($app) {
+
+	global $user_id;
+
 	$db = new DbHandlerProfile();
-	$groupsuser = $db->getUsersInGroupWeb($contractorid);
+	$groupsuser = $db->getUsersInGroupForMonitor($contractorid);
 	$response = array();
-	if ($groupsuser != NULL || empty($groupsuser)) {
-		$data = array();
-		foreach ($groupsuser as $user) {
-			if (!$db->isUserInGroup($shopid,$user["id"])&&$user["id"]>3)
-				$data[] = $user;
-		}
-		$response["draw"] = intval(1);
-		$response["recordsTotal"] = intval(10);
-		$response["recordsFiltered"] = intval(10);
-		$response["data"] = $data;
-	}
-	else {
-		$response["error"] = true;
-		$response["message"] = "Failed to get groups of user. Please try again";
-	}
-	echoResponse(200, $response);
-});
-/**
- * Listing all groups of user (GET method)
- * method GET
- * url /groups/:id
- */
-$app->get('/groups/:id', function($id) use ($app) {
-	// listing all groups of user
-	$db = new DbHandlerProfile();
-	$result = $db->getGroupsOfUser($id);
-	$response = array();
-	if ($result) {
+	if ($groupsuser) {
 		$response["error"] = false;
-		$response["groups"] = $result;
+		$response["data"] = $groupsuser;
 	}
 	else {
 		$response["error"] = true;
-		$response["message"] = "Failed to get groups of user. Please try again";
-	}
-	echoResponse(200, $response);
-});
-/**
- * Listing all users in group
- * method GET
- * url /groupusers/:id
- */
-$app->get('/groupusers/:id', function($id) use ($app) {
-	// check for required params
-    /*verifyRequiredParams(array('shopid'));
-	// reading post params
-    $shopid = $app->request->get('shopid');
-	// listing all users of group
-	$db = new DbHandlerProfile();
-	$groupsuser = $db->getUsersInGroupWeb($shopid);
-	$response = array();
-	if ($groupsuser != NULL || empty($groupsuser)) {
-		$data = array();
-		foreach ($groupsuser as $user) {
-			if ($user["id"]>3)
-				$data[] = $user;
-		}
-		$response["draw"] = intval(1);
-		$response["recordsTotal"] = intval(10);
-		$response["recordsFiltered"] = intval(10);
-		$response["data"] = $data;
-		//$response["error"] = false;
-	}
-	else {
-		$response["error"] = true;
-		$response["message"] = "Failed to get groups of user. Please try again";
-	}
-	echoResponse(200, $response);*/
-	// listing all groups
-	$db = new DbHandlerProfile();
-	$result = $db->getUsersInGroupWeb($id);
-	$response = array();
-	if ($result) {
-		$response["error"] = false;
-		$response["users"] = $result;
-	}
-	else {
-		$response["error"] = true;
-		$response["message"] = "Failed to get groups of user. Please try again";
+		$response["message"] = "Failed to get users in group. Please try again";
 	}
 	echoResponse(200, $response);
 });
@@ -1103,7 +1043,14 @@ $app->get('/savetoexcelc/:id', 'authenticate', function($id) use ($app) {
 					$tmp["itemid"] = $db->getProductCodeById($item["productid"]);
 					$tmp["itemname"] = $item["name"];
 					$tmp["itemcount"] = $item["count"];
-					$tmp["itemprice"] = $item["price"];
+					if (isset($item["sale"]) && !empty($item["sale"]) && isset($item["sale"]["price_with_sale"]) && !empty($item["sale"]["price_with_sale"]))
+						$tmp["itemprice"] = $item["sale"]["price_with_sale"];
+					else
+						$tmp["itemprice"] = $item["price"];
+                    if (isset($order["installment_time_notification"]) && !empty($order["installment_time_notification"]))
+                        $tmp["installment_time_notification"] = $order["installment_time_notification"];
+                    else
+                        $tmp["installment_time_notification"] = "";
 					$data[] = $tmp;
 				}
 			}
@@ -1141,6 +1088,8 @@ $app->get('/savetoexcelc/:id', 'authenticate', function($id) use ($app) {
 		$sheet->getColumnDimension('J')->setAutoSize(true);
 		$sheet->setCellValue("K1", 'Цена товара');
 		$sheet->getColumnDimension('K')->setAutoSize(true);
+        $sheet->setCellValue("L1", 'Рассрочка');
+        $sheet->getColumnDimension('L')->setAutoSize(true);
 		foreach ($data as $orderskey => $order) {
 			$i=0;
 			foreach ($order as $recordkey => $record) {
@@ -1264,7 +1213,7 @@ $app->get('/savetoexcel/:id', 'authenticate', function($id) use ($app) {
  * url /xls/upload:id
  */
 $app->post('/xls/upload/:id', 'authenticate', function($id) use ($app) {
-	// array for final json respone
+	// array for final json response
 	$response = array();
 	try{
 		// Check if the file is missing
@@ -1346,12 +1295,134 @@ $app->post('/xls/upload/:id', 'authenticate', function($id) use ($app) {
 	echoResponse(200, $response);
 });
 /**
+ * import 1c products nomenclature for fabricant
+ * method POST
+ * url /1c/rest:id
+ * id - contractor id
+ */
+$app->post('/1cstate', function() use ($app) {
+	// array for final json response
+	$response = array();
+	try{
+		if (!isset($_FILES["xls"])) {
+			throw new Exception('Not received any file without name!F');
+		}
+		// Check if the file is missing
+		if (!isset($_FILES["xls"]["name"])) {
+			throw new Exception('Not received any file!F');
+		}
+		// Check the file size >100MB
+		if($_FILES["xls"]["size"] > 100*1024*1024) {
+			throw new Exception('File is too big');
+		}
+
+		// Подключаем класс для работы с excel
+		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+		// Подключаем класс для вывода данных в формате excel
+		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
+		
+		$tmpFile = $_FILES["xls"]["tmp_name"];
+
+		$filename = date('dmY').'-'.uniqid('1cstate-tmp-').".xls";
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+		
+		//Считываем файл в следующую строку
+        $data = file_get_contents($tmpFile);
+        //Декодируем наши данные
+        $data = base64_decode($data);
+        //Сейчас нормальный файл уже можно сохранить на нашем диске
+        $success=false;
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) )
+        {
+            @fwrite($fp, $data);
+            @fclose($fp);
+			$success=true;
+        }
+        unset($data);
+		
+		//if (move_uploaded_file($tmpFile, $path)) {
+		if($success){
+			$objPHPExcel = PHPExcel_IOFactory::load($path);
+			// Set and get active sheet
+			$objPHPExcel->setActiveSheetIndex(0);
+			$worksheet = $objPHPExcel->getActiveSheet();
+			$worksheetTitle = $worksheet->getTitle();
+			$highestRow = $worksheet->getHighestRow();
+			$highestColumn = $worksheet->getHighestColumn();
+			$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+			$nrColumns = ord($highestColumn) - 64;
+			
+			$fdb = new DbHandlerFabricant();
+			$table = array();
+			for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
+				$cells = array();
+				for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
+					$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
+					$cells[] = $cell->getValue();
+				}
+
+				if ($rowIndex == 2 || $rowIndex == 3 || $rowIndex == $highestRow) {
+					$table[] = $cells;
+				}
+				
+				/*$info = array();
+				
+				$info["name"] = array("text" => $cells[0]);
+				$info["name_full"] = array("text" => $cells[0]);
+				$info["price"] = $cells[5];
+				$info["summary"] = array("text" => "");
+				$info["prices"] = array();
+				$info["prices"][] = array("name" => "installment_49", "value" => ceil($cells[5] * 1.03));
+				$info["tags"] = array();
+				$info["icon"] = array("image_url" => "");
+				
+				$slides = array();
+				$slides[] = array("photo" => $info["icon"], "title" => $info["summary"]);
+				$details = array();
+				$details[] = array("type" => 2, $slides);
+				//$info["details"] = $details;
+
+				$infojson = json_encode($info, JSON_UNESCAPED_UNICODE);
+				$status = 1;
+
+				$result = $fdb->createProduct($id, $cells[0], $cells[5], $infojson, $status, $cells[1]);*/
+
+
+				
+				//$fdb->publishProduct($result);
+			}
+
+			//$response["message"] = 'Proucts updated successfully!';
+			//$response["error"] = false;
+			//$response["success"] = 1;
+			if (!empty($table)) {
+				$response = $table;
+			} else {
+				$response[] = "Read from file exception";
+			}
+		}
+		else {
+			throw new Exception('Can not upload file!F');
+		}
+	} catch (Exception $e) {
+		// Exception occurred. Make error flag true
+		//$response["error"] = true;
+		//$response["message"] = $e->getMessage();
+		//$response["success"] = 0;
+		$response[] = $e->getMessage();
+	}
+	echoResponse(200, $response);
+	//$app->status(200);
+	//$app->contentType('plaintext/text');
+	//print_r($response);
+});
+/**
  * Uploading slides images
  * method POST
  * url /slides/upload/:prefix
  */
 $app->post('/slides/upload/:prefix', 'authenticate', function($prefix) use ($app) {
-	// array for final json respone
+	// array for final json response
 	$response = array();
 	try{
 		// Check if the file is missing
@@ -1404,7 +1475,7 @@ $app->post('/slides/upload/:prefix', 'authenticate', function($prefix) use ($app
  * url /avatar/upload/:id
  */
 $app->post('/avatar/upload/:id', 'authenticate', function($id) use ($app) {
-	// array for final json respone
+	// array for final json response
 	$response = array();
 	try{
 		// Check if the file is missing

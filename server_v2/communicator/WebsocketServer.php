@@ -104,6 +104,8 @@ define("SALE_OPERATION_REMOVE", 1);
 define("SALE_OPERATION_UPDATE", 2);
 define("SALE_OPERATION_ADD_TO_CUSTOMER", 3);
 define("SALE_OPERATION_REMOVE_FROM_CUSTOMER", 4);
+define("SALE_OPERATION_SET_DEFAULT_INSTALLMENT", 5);
+define("SALE_OPERATION_CLEAR_DEFAULT_INSTALLMENTS", 6);
 
 define("SALE_TYPE_SALE", 4);
 define("SALE_TYPE_DISCOUNT", 5);
@@ -366,9 +368,10 @@ protected function outgoingLastAndroidVersion($connect){
  	$json = array();
     $json["transport"]=TRANSPORT_SESSION;
 	$json["type"]=OUTGOING_LAST_ANDROID_VERSION;
-	$json["versionName"]=1.3;
-	$json["versionCode"]=4;
-	$json["message"]="Вышла новая версия 1.3.\n- Возможность свернуть историю заказов. В свернутом виде видны заказы в обработке и заказы за последний день, остальные заказы не видны \n- Более стабильная работа по мобильной сети";
+	$json["versionName"]=1.8;
+	$json["versionCode"]=9;
+	$json["message"]="Вышла новая версия ".$json["versionName"].".\nИзменения:\n- Добавлена новая метка: \"Нет в наличии\", в списке товаров\n- По умолчанию \"Недавно заказанные\" не отображать \n- По умолчанию свернуть \"Историю заказов\"\n- Исправления в дизайне\n* ВНИМАНИЕ! После обновления рекомендуем сделать \"Сброс данных\" (Для этого: зайдите в Настройки -> Нажмите \"Сброс данных\")";
+
 	$json["title"]="Обновление Фабриканта";
 	
 	$this->sendFrame($connect, $json);		
@@ -1185,7 +1188,7 @@ protected function groupOperationAddUsers($senderid,$groupid,$users){
 		
 		$changed_users[]=$new_user;
 		
-		$this->sendSMS("Group".$groupid."Sender".$senderid."AddUser".$userid);		
+		//$this->sendSMS("Group".$groupid."Sender".$senderid."AddUser".$userid);		
 	}
 	
 	$this->log("groupOperationAddUsers. Users added. added_users=".json_encode($changed_users,JSON_UNESCAPED_UNICODE));
@@ -1356,7 +1359,7 @@ protected function ProcessMessageProfile($sender,$connects,$json) {
 				case GROUPOPERATION_SAVE :	
 					$groupid = $json["groupid"];		
 					$this->groupOperationSave($senderid,$groupid,$json);	
-					$this->sendSMS("Group".$groupid."SavedSender".$senderid);					
+					//$this->sendSMS("Group".$groupid."SavedSender".$senderid);					
 				break;
 				
 				case GROUPOPERATION_CREATE :			
@@ -1368,7 +1371,7 @@ protected function ProcessMessageProfile($sender,$connects,$json) {
 					$userid = $json["userid"];
 					$status = $json["status"];
 					$this->groupOperationUserStatus($senderid,$userid,$groupid,$status);
-					$this->sendSMS("Group".$groupid."User".$userid."Status".$status);
+					//$this->sendSMS("Group".$groupid."User".$userid."Status".$status);
 				break;
 			}			
 			
@@ -1811,7 +1814,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 						case SALE_TYPE_INSTALLMENT:
 							$this->log("SALE_TYPE_INSTALLMENT info=".json_encode($info,JSON_UNESCAPED_UNICODE));
 							$this->log("SALE_TYPE_INSTALLMENT condition=".json_encode($condition,JSON_UNESCAPED_UNICODE));
-							$condition["time_notification"]=$info["time_notification"];											
+							$condition["time_notification"]=$info["time_notification"];
 							break;
 					}
 					
@@ -1902,6 +1905,9 @@ protected function ProcessConsoleOperation($connect,$info) {
 						return;
 					}
 					
+					//Remove tag_customer from customer's default_installments													
+					$this->db_profile->removeDefaultInstallment($condition["tag_customer"],$customerid);
+					
 					//Remove tag_customer from customer													
 					$this->db_profile->removeTagFromGroup($condition["tag_customer"],$customerid);
 					
@@ -1910,6 +1916,122 @@ protected function ProcessConsoleOperation($connect,$info) {
 					
 					//Console response					
 					$this->consoleResponse($connect,false,200,"Sale removed from customer");
+					
+				break;
+				
+				case SALE_OPERATION_SET_DEFAULT_INSTALLMENT :
+					$saleid=$info["saleid"];					
+					$sale=$this->db_fabricant->getSaleById($saleid);
+					
+					if(!isset($sale)){
+						$this->consoleResponse($connect,true,403,"Sale with saleid=".$saleid." not found");
+						return;
+					}
+					
+					if($sale["status"]==2){
+						$this->consoleResponse($connect,true,403,"Sale with saleid=".$saleid." was removed");
+						return;
+					}
+					
+					$condition=json_decode($sale["condition"],true);
+										
+					$customerid=$info["customerid"];
+					$groups=$this->db_profile->getGroupById($customerid);
+					if((!isset($groups))||(!isset($groups[0]))){
+						$this->consoleResponse($connect,true,403,"Customer with customer id not found");
+						return;
+					}
+					$customer=$groups[0];
+										
+					$groups=$this->db_profile->getGroupById($sale["contractorid"]);
+					if((!isset($groups))||(!isset($groups[0]))){
+						$this->consoleResponse($connect,true,403,"Contractor with contractorid not found");
+						return;
+					}					
+					$contractor=$groups[0];
+					
+					if($customer["type"]==0){
+						$this->consoleResponse($connect,true,403,"Group with customerid is not customer. type=".$customer["type"]);
+						return;
+					}
+					
+					$user_status_in_contractor=$this->db_profile->getUserStatusInGroup($sale["contractorid"],$senderid);
+					if(($user_status_in_contractor!=1)&&($user_status_in_contractor!=2)){									
+						$this->consoleResponse($connect,true,403,"Only contractor user can add tag to customer. user_status_in_contractor=".$user_status_in_contractor);
+						return;
+					}
+					
+					if(!$this->db_profile->groupHasTag($condition["tag_customer"],$customerid)){
+						$this->consoleResponse($connect,true,403,"Customer has not installment with saleid=".$saleid);
+						return;
+					}
+					
+					$contractor_info=json_decode($contractor["info"],true);
+					if(isset($contractor_info) && isset($contractor_info["sales"])){
+					
+						$contractor_sales=$contractor_info["sales"];
+						
+						//Clear all tag_customers from customer	before add new											
+						$this->db_profile->clearDefaultInstallments($customerid,$contractor_sales);
+						
+						//Add new one										
+						$this->db_profile->addDefaultInstallment($condition["tag_customer"],$customerid);
+					
+						//Notify changed customer
+						$this->outgoingNotifyGroupChanged($customerid);
+						
+						//Console response					
+						$this->consoleResponse($connect,false,200,"Default installment set");
+					}else{
+						//Console response					
+						$this->consoleResponse($connect,false,200,"No sales found in contractor");
+					}
+					
+				break;
+				
+				case SALE_OPERATION_CLEAR_DEFAULT_INSTALLMENTS :
+					$contractorid=$info["contractorid"];					
+					$customerid=$info["customerid"];
+					
+					$groups=$this->db_profile->getGroupById($customerid);
+					if((!isset($groups))||(!isset($groups[0]))){
+						$this->consoleResponse($connect,true,403,"Customer with customerid not found");
+						return;
+					}					
+					$customer=$groups[0];
+					
+					$groups=$this->db_profile->getGroupById($contractorid);
+					if((!isset($groups))||(!isset($groups[0]))){
+						$this->consoleResponse($connect,true,403,"Contractor with contractorid not found");
+						return;
+					}					
+					$contractor=$groups[0];
+					
+					$user_status_in_contractor=$this->db_profile->getUserStatusInGroup($contractorid,$senderid);
+					if(($user_status_in_contractor!=1)&&($user_status_in_contractor!=2)){									
+						$this->consoleResponse($connect,true,403,"Only contractor user can remove tag from customer. user_status_in_contractor=".$user_status_in_contractor);
+						return;
+					}
+					
+					
+					$contractor_info=json_decode($contractor["info"],true);
+					if(isset($contractor_info) && isset($contractor_info["sales"])){
+					
+						$contractor_sales=$contractor_info["sales"];
+						
+						//Remove tag_customer from customer													
+						$this->db_profile->clearDefaultInstallments($customerid,$contractor_sales);
+						
+						//Notify changed customer
+						$this->outgoingNotifyGroupChanged($customerid);
+						
+						//Console response					
+						$this->consoleResponse($connect,false,200,"Default installments removed from customer");
+					}else{
+						//Console response					
+						$this->consoleResponse($connect,false,200,"No sales found in contractor");
+					}
+					
 					
 				break;
 			}	
@@ -2689,9 +2811,13 @@ function handshake($connect){
 
     $line = fgets($connect);
     $header = explode(' ', $line);
-    $info['method'] = $header[0];
-    $info['uri'] = $header[1];
-	
+    
+    try{
+		$info['method'] = $header[0];
+		$info['uri'] = $header[1];
+	}catch(Exception $e){
+		
+	}
 	//$this->log("handshake header-method : ".$info['method']);
 	
     //считываем заголовки из соединения

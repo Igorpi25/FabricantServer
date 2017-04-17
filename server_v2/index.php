@@ -30,10 +30,18 @@ $api_key = NULL;
 
 $app->get('/test', function () {
 		
-		$db=new DbHandlerProfile();
+		//$db=new DbHandlerProfile();		
+		//$body=$db->getAllGroups();
+		$body="Hello, from Fabricant's server!";
+		echoResponse(200,$body);
+});
+
+$app->post('/test_post', function () use ($app) {
 		
-		$body=$db->getAllGroups();
+		$id = $app->request->post('id');
+		$last_timestamp = $app->request->post('last_timestamp');		
 		
+		$body="Hello, from Fabricant's server! ID=".($id+1)." last_timestamp=".$last_timestamp;
 		echoResponse(200,$body);
 });
 
@@ -817,7 +825,7 @@ $app->post('/orders/create', 'authenticate', function () use ($app)  {
 	
 	echoResponse(200, $response);
 	
-	sendSMS("CreateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
+	//sendSMS("CreateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
 
 });
 
@@ -896,7 +904,7 @@ $app->post('/orders/update', 'authenticate', function () use ($app)  {
 	
 	echoResponse(200, $response);
 	if($response["success"]==1){
-		sendSMS("UpdateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
+		//sendSMS("UpdateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
 	}
 	
 });
@@ -1327,6 +1335,7 @@ function makeOrderRecord($order){
 				if($product["status"]!=2)continue;//Product status incorrect					
 				if($count==0)continue;//Don't add empty products
 				
+				
 				$item=array();
 				
 				if(isset($price_installment_name)){
@@ -1340,6 +1349,11 @@ function makeOrderRecord($order){
 				$item["name"]=$product["name"];
 				$item["count"]=$count;
 				$item["amount"]=$item["price"]*$count;
+				
+				//Нет в наличии
+				if(productHasTag("not_in_stock",$product)){
+					$item["name"]="(НЕТ В НАЛИЧИИ) ".$item["name"];
+				}
 				
 				$sale=null;
 				$sale=getProductSale($product,$contractor,$customer,$installment);
@@ -1939,6 +1953,7 @@ $app->post('/sales/update', 'authenticate', function () use ($app)  {
 			case M_SALE_TYPE_INSTALLMENT:	
 			
 				$json_header["time_notification"] = filter_var($app->request->post('time_notification'),FILTER_VALIDATE_INT);				
+				
 				if(!isset($json_header["time_notification"])){
 					throw new Exception("Sale update error. time_notification is not found");
 				}		
@@ -2047,6 +2062,86 @@ $app->post('/sales/remove_from_customer', 'authenticate', function () use ($app)
 	}
 });
 
+$app->post('/sales/set_default_installment', 'authenticate', function () use ($app)  {
+	
+	$response = array();
+	
+	try{
+		// check for required params
+		verifyRequiredParams(array('saleid','customerid'));
+	
+		global $user_id;	
+		
+		
+		//Console command params
+		$json_header=array();
+		$json_header["console"]="v2/index/sales/add_default_installment";
+		$json_header["operation"]=M_CONSOLE_OPERATION_SALE;
+		$json_header["sale_operationid"]=M_SALE_OPERATION_SET_DEFAULT_INSTALLMENT;
+		$json_header["senderid"]=$user_id;
+		
+		//Required params
+		$json_header["saleid"] = filter_var($app->request->post('saleid'),FILTER_VALIDATE_INT);
+		$json_header["customerid"] = filter_var($app->request->post('customerid'),FILTER_VALIDATE_INT);
+		
+		$console_response=consoleCommand($json_header);
+		
+		//Respone of console
+		$response['error'] = $console_response["error"];
+		$response['message'] = $console_response["message"];
+		$response['success'] = $console_response["success"];
+				
+		echoResponse($console_response["status"], $response);
+		
+	} catch (Exception $e) {
+	
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+		
+		echoResponse(200, $response);		
+	}
+});
+
+$app->post('/sales/clear_default_installment', 'authenticate', function () use ($app)  {
+	try{
+		// check for required params
+		verifyRequiredParams(array('contractorid','customerid'));
+	
+		global $user_id;	
+		
+		$response = array();
+		
+		//Console command params
+		$json_header=array();
+		$json_header["console"]="v2/index/sales/remove_default_installment";
+		$json_header["operation"]=M_CONSOLE_OPERATION_SALE;
+		$json_header["sale_operationid"]=M_SALE_OPERATION_CLEAR_DEFAULT_INSTALLMENTS;
+		$json_header["senderid"]=$user_id;
+		
+		//Required params
+		$json_header["contractorid"] = filter_var($app->request->post('contractorid'),FILTER_VALIDATE_INT);
+		$json_header["customerid"] = filter_var($app->request->post('customerid'),FILTER_VALIDATE_INT);
+		
+		$console_response=consoleCommand($json_header);
+		
+		//Respone of console
+		$response['error'] = $console_response["error"];
+		$response['message'] = $console_response["message"];
+		$response['success'] = $console_response["success"];
+				
+		echoResponse($console_response["status"], $response);
+		
+	} catch (Exception $e) {
+	
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+		
+		echoResponse(200, $response);		
+	}
+});
+
 //-----------------Console command------------------
 
 //Operation numbers from WebsocketServer
@@ -2075,6 +2170,8 @@ define("M_SALE_OPERATION_REMOVE", 1);
 define("M_SALE_OPERATION_UPDATE", 2);
 define("M_SALE_OPERATION_ADD_TO_CUSTOMER", 3);
 define("M_SALE_OPERATION_REMOVE_FROM_CUSTOMER", 4);
+define("M_SALE_OPERATION_SET_DEFAULT_INSTALLMENT", 5);
+define("M_SALE_OPERATION_CLEAR_DEFAULT_INSTALLMENTS", 6);
 
 define("M_SALE_TYPE_SALE", 4);
 define("M_SALE_TYPE_DISCOUNT", 5);

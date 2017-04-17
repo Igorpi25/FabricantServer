@@ -497,6 +497,47 @@ class DbHandlerProfile extends DbHandler{
             return NULL;
         }
     }
+    /**
+     * Get all users for monitor
+     * returns public columns of 'users' table
+     */
+    public function getAllUsersForMonitor() {
+        $stmt = $this->conn->prepare("SELECT u.id, u.name, u.phone, u.email, u.status, u.info, u.changed_at, a.filename_icon, a.filename_avatar, a.filename_full FROM users u LEFT OUTER JOIN avatars a ON u.avatar = a.id ");
+        
+        if ($stmt->execute()) {
+        
+            $stmt->bind_result($id, $name, $phone, $email, $status, $info, $changed_at, $icon, $avatar, $full);
+            
+            $users=array();
+            while($stmt->fetch()) {
+                $res= array();
+                $res["id"] = $id;
+                $res["name"] = $name;
+                $res["phone"] = $phone;
+                $res["email"] = $email;
+                $res["status"] = $status;
+                $res["info"] = $info;
+                
+                $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+                $res["changed_at"] = $timestamp_object->getTimestamp();
+                
+                $avatars=array();
+                
+                if($full) $avatars['full']=URL_HOME.path_fulls.$full;
+                if($avatar) $avatars['avatar']=URL_HOME.path_avatars.$avatar;
+                if($icon) $avatars['icon']=URL_HOME.path_icons.$icon;
+                
+                if(count($avatars))
+                    $res['avatars']=$avatars;
+                $users[]=$res;
+            }
+            $stmt->close();
+            
+            return $users;
+        } else {
+            return NULL;
+        }
+    }
  
     /**
      * Fetching user api key
@@ -1098,11 +1139,11 @@ class DbHandlerProfile extends DbHandler{
     }
 
     /**
-     * Get users in group Web
+     * Get users in group for monitor
      * @param Integer $groupid
      * @return Array Users list 
      */
-    public function getUsersInGroupWeb($groupid) {
+    public function getUsersInGroupForMonitor($groupid) {
         $stmt = $this->conn->prepare("SELECT u.id, u.name, u.email, u.phone FROM users u, group_users gu WHERE  u.id = gu.userid AND gu.groupid = ? AND gu.status <> 4");
         $stmt->bind_param("i", $groupid); 
         if($stmt->execute()) {
@@ -1685,6 +1726,83 @@ class DbHandlerProfile extends DbHandler{
 			return null;
 		}
 		
+	}
+	
+	public function addDefaultInstallment($tag,$customerid){
+		
+		$groups=$this->getGroupById($customerid);
+		
+		
+		if((!isset($groups))||(!isset($groups[0])))
+			return;
+		
+		$group=$groups[0];
+		
+		if(!isset($group["info"])){
+			$group["info"]=array();
+		}
+		
+		$info=json_decode($group["info"],true);
+		
+		if(!isset($info["default_installments"])){
+			$info["default_installments"]=array();
+		}
+		
+		$default_installments=$info["default_installments"];
+		
+		if(($key = array_search($tag, $default_installments)) !== false) {
+			return;
+		}
+		
+		$default_installments[]=$tag;
+		
+		$info["default_installments"]=$default_installments;
+		
+		$this->changeGroupInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $customerid);
+		
+	}
+	
+	public function clearDefaultInstallments($customerid,$contractor_sales){
+		
+		$groups=$this->getGroupById($customerid);
+		
+		
+		if((!isset($groups))||(!isset($groups[0])))
+			return;
+		
+		$group=$groups[0];
+		
+		if(!isset($group["info"]))
+			return;
+				
+		$info=json_decode($group["info"],true);
+		
+		if(!isset($info["default_installments"]))
+			return;
+		
+		$default_installments=$info["default_installments"];
+		
+		$tag_found=false;
+		
+		foreach($contractor_sales as $sale){
+			
+			if($sale["type"]!=6)continue;
+			
+			while(($key = array_search($sale["tag_customer"], $default_installments)) !== false) {
+				unset($default_installments[$key]);		
+				
+				$default_installments=array_values($default_installments);
+				
+				$tag_found=true;
+			}
+		
+		}
+		
+		$info["default_installments"]=$default_installments;
+		
+		if($tag_found){
+			$this->changeGroupInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $customerid);
+		}
 	}
 	
 	//--------------------------Tags----------------------------
