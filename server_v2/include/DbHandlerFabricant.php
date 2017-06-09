@@ -12,6 +12,7 @@ class DbHandlerFabricant extends DbHandler{
 
 	const STATUS_CREATED=1;
 	const STATUS_PUBLISHED=2;
+	const STATUS_UNPUBLISHED=3;
 	const STATUS_DELETED=4;
 	
 	const STATUS_ORDER_PROCESSING=1;
@@ -57,10 +58,14 @@ class DbHandlerFabricant extends DbHandler{
 	 * @param String $password User login password
 	 */
 	public function createProduct($contractorid, $name, $price, $info, $status, $code1c) {
-
+		
+		if(empty($info)){
+			$info="{}";
+		}
+		
 		// insert query
 		$stmt = $this->conn->prepare("INSERT INTO products(contractorid, name, price, info, status, code1c) values(?, ?, ?, ?, ?, ?)");
-		$stmt->bind_param("isdsis", $contractorid, $name, $price, $info, $status, $code1c);
+		$stmt->bind_param("isdsii", $contractorid, $name, $price, $info, $status, $code1c);
 		$stmt->execute();
 		$result = $this->conn->insert_id;
 		$stmt->close();
@@ -85,17 +90,33 @@ class DbHandlerFabricant extends DbHandler{
 		$stmt->close();
 		return $result;
 	}
+	
+	public function removeAllProductsOfContractor($contractorid) {
+		// update query
+		$stmt = $this->conn->prepare("DELETE FROM `products` WHERE `contractorid`=?");
+		$stmt->bind_param("i", $contractorid);
+		$result = $stmt->execute();
+		
+		if($result){
+			$affected_rows=$stmt->affected_rows;
+			$stmt->close();
+			return $affected_rows;
+		}else{			
+			$stmt->close();
+			return 0;
+		}
+	}
 
 	public function getProductById($id) {
 
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.id =?");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c FROM products p WHERE p.id =?");
 		$stmt->bind_param("i", $id);
 		if ($stmt->execute()) {
 
 			$stmt->store_result();
 			if($stmt->num_rows==0)return NULL;
 
-			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at);            
+			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at,$code1c);            
 
 			$stmt->fetch();
 
@@ -106,6 +127,7 @@ class DbHandlerFabricant extends DbHandler{
 			$res["status"] = $status;
 			$res["price"] = $price;
 			$res["info"] = $info;
+			$res["code1c"] = $code1c;
 
 			$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 			$res["changed_at"] = $timestamp_object->getTimestamp();	
@@ -235,6 +257,24 @@ class DbHandlerFabricant extends DbHandler{
 		return $result;
 	}
 
+	public function unpublishProduct($id) {
+		// update query
+		$stmt = $this->conn->prepare("UPDATE `products` SET `status`=3 , `changed_at`=CURRENT_TIMESTAMP() WHERE `id`=?");
+		$stmt->bind_param("i", $id);
+		$result = $stmt->execute();
+		$stmt->close();
+		return $result;
+	}
+
+	public function updateProductCode($id, $code) {
+		// update query
+		$stmt = $this->conn->prepare("UPDATE `products` SET `code1c`= ? , `changed_at`=CURRENT_TIMESTAMP() WHERE `id`=?");
+		$stmt->bind_param("ii", $code, $id);
+		$result = $stmt->execute();
+		$stmt->close();
+		return $result;
+	}
+
 	public function getProductCodeById($id) {
 
 		$stmt = $this->conn->prepare("SELECT `code1c` FROM `products` WHERE `id`=?");
@@ -253,6 +293,40 @@ class DbHandlerFabricant extends DbHandler{
 		}
 	}
 
+	public function getProductByCode($contractorid,$code) {
+
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c FROM products p WHERE p.contractorid=? AND p.code1c =?");
+		$stmt->bind_param("ii", $contractorid,$code);
+		if ($stmt->execute()) {
+
+			$stmt->store_result();
+			if($stmt->num_rows==0)return NULL;
+
+			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at,$code1c);            
+
+			$stmt->fetch();
+
+			$res= array();
+			$res["id"] = $id;
+			$res["contractorid"] = $contractorid;
+			$res["name"] = $name;
+			$res["status"] = $status;
+			$res["price"] = $price;
+			$res["info"] = $info;
+			
+
+			$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+			$res["changed_at"] = $timestamp_object->getTimestamp();	
+
+			$res["code1c"] = $code1c;
+			
+			$stmt->close();
+			return $res;
+		} else {
+			return NULL;
+		}
+	}
+	
 	//-----------------Order--------------------
 	
 	public function createOrder($record){
@@ -793,17 +867,19 @@ class DbHandlerFabricant extends DbHandler{
 		if(!isset($product["info"])){
 			$info=array();
 			$info["tags"]=array();
-			$product["info"]=$info;
+			$product["info"]=json_encode($info,JSON_UNESCAPED_UNICODE);
 		}		
-		if(!isset($product["info"]["tags"])){
-			
-			$product["info"]["tags"]=array();
+		
+		$info=json_decode($product["info"],true);
+		
+		if(!isset($info["tags"])){			
+			$info["tags"]=array();
 		}
 		
 		//Add tag if not already exists
-		if(!in_array($tag,$product["info"]["tags"])){
-			$product["info"]["tags"][]=$tag;			
-			$this->updateProduct($product["id"], $product["name"], $product["price"], json_encode($product["info"]), $product["status"]);
+		if(!in_array($tag,$info["tags"])){
+			$info["tags"][]=$tag;			
+			$this->updateProduct($product["id"], $product["name"], $product["price"], json_encode($info,JSON_UNESCAPED_UNICODE), $product["status"]);
 		}
 	}
 	
@@ -812,12 +888,12 @@ class DbHandlerFabricant extends DbHandler{
 		$product=$this->getProductById($productid);
 		
 		if(!isset($product["info"]))
-				continue;
+				return;
 				
 		$info=json_decode($product["info"],true);
 			
-		if(!isset($info["prices"]))
-				continue;
+		if(!isset($info["tags"]))
+				return;
 		
 		$tags=$info["tags"];			
 		$tag_found=false;
@@ -842,12 +918,12 @@ class DbHandlerFabricant extends DbHandler{
 		foreach($products as $product){
 		
 			if(!isset($product["info"]))
-				continue;
+				return;
 				
 			$info=json_decode($product["info"],true);
 			
 			if(!isset($info["tags"]))
-				continue;
+				return;
 			
 			$tags=$info["tags"];
 			
@@ -874,12 +950,12 @@ class DbHandlerFabricant extends DbHandler{
 		foreach($products as $product){
 		
 			if(!isset($product["info"]))
-				continue;
+				return;
 				
 			$info=json_decode($product["info"],true);
 			
 			if(!isset($info["prices"]))
-				continue;
+				return;
 			
 			$prices=$info["prices"];
 			
@@ -898,6 +974,74 @@ class DbHandlerFabricant extends DbHandler{
 			}
 		
 		}
+	}
+	
+	//--------------------------1c----------------------------------
+	
+	public function makeProductNotInStock($id){
+		
+		$tag="not_in_stock";
+		
+		$product=$this->getProductById($id);
+
+		if(!isset($product)){
+			return false;
+		}
+		
+		if(!isset($product["info"])){
+			$info=array();
+			$info["tags"]=array();
+			$product["info"]=json_encode($info,JSON_UNESCAPED_UNICODE);
+		}		
+		
+		$info=json_decode($product["info"],true);
+		
+		if(!isset($info["tags"])){			
+			$info["tags"]=array();
+		}
+		
+		//Add tag if not already exists
+		if(!in_array($tag,$info["tags"])){
+			$info["tags"][]=$tag;			
+			$this->updateProduct($product["id"], $product["name"], $product["price"], json_encode($info,JSON_UNESCAPED_UNICODE), $product["status"]);
+		}
+		
+		return true;
+	}
+	
+	public function makeProductInStock($id){
+		
+		$tag="not_in_stock";
+		
+		$product=$this->getProductById($id);
+		
+		if(!isset($product))
+			return false;
+			
+		if(!isset($product["info"]))
+			return true;
+				
+		$info=json_decode($product["info"],true);
+			
+		if(!isset($info["prices"]))
+				return true;
+		
+		$tags=$info["tags"];			
+		$tag_found=false;
+		while(($key = array_search($tag, $tags)) !== false) {
+			unset($tags[$key]);		
+			
+			$tags=array_values($tags);
+			
+			$tag_found=true;
+		}		
+		$info["tags"]=$tags;
+		
+		if($tag_found){
+			$this->updateProduct($product["id"], $product["name"], $product["price"], json_encode($info,JSON_UNESCAPED_UNICODE), $product["status"]);
+		}
+		
+		return true;
 	}
 	
 	//----------------------Delta-----------------------------------------

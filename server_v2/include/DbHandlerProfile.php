@@ -152,24 +152,16 @@ class DbHandlerProfile extends DbHandler{
 	
 	public function checkLoginByPhone($phone, $password) {
         // fetching user by phone
-        $stmt = $this->conn->prepare("SELECT password_hash FROM users WHERE phone = ?");
+        $stmt = $this->conn->prepare("SELECT `password_hash` FROM users WHERE `phone` = ?");
  
         $stmt->bind_param("s", $phone);
  
-        $stmt->execute();
+        if(!$stmt->execute())return FALSE;
  
         $stmt->bind_result($password_hash);
  
-        $stmt->store_result();
- 
-        if ($stmt->num_rows > 0) {
-            // Found user with the phone
-            // Now verify the password
- 
-            $stmt->fetch();
- 
-            $stmt->close();
- 
+        if ($stmt->fetch()) {
+			
             if (PassHash::check_password($password_hash, $password)) {
                 // User password is correct
                 return TRUE;
@@ -177,6 +169,9 @@ class DbHandlerProfile extends DbHandler{
                 // user password is incorrect
                 return FALSE;
             }
+			
+			$stmt->close();
+			
         } else {
             $stmt->close();
  
@@ -418,7 +413,7 @@ class DbHandlerProfile extends DbHandler{
         $stmt->bind_param("i", $id);
         if ($stmt->execute()) {
         
-	    $stmt->store_result();
+			$stmt->store_result();
             if($stmt->num_rows==0)return NULL;
             
             $stmt->bind_result($id,$name, $phone, $email, $info, $status, $changed_at, $icon, $avatar,$full);            
@@ -1085,10 +1080,31 @@ class DbHandlerProfile extends DbHandler{
 	 * @return Integer Id of new group
      */
     public function addUserToGroup($groupid,$userid,$status) {
+
+        $stmt = $this->conn->prepare("SELECT `groupid` FROM `group_users` WHERE ( ( `groupid` = $groupid ) AND ( `userid` = $userid ) )");        
+        $result = $stmt->execute();
+        $stmt->store_result();
+        $numrows = $stmt->num_rows;
+
+        //error_log($numrows,0);
+
+        if ($numrows > 0) {
+            $stmt = $this->conn->prepare("UPDATE `group_users` SET `status` = $status WHERE ( ( `groupid` = $groupid ) AND ( `userid` = $userid ) )");        
+            $stmt->execute();
+            $stmt->close();
+        }
+        else {
+            $stmt = $this->conn->prepare("INSERT INTO group_users(groupid,userid,status) values( ? , ? , ? )");
+            $stmt->bind_param("iii", $groupid, $userid, $status); 
+            $stmt->execute(); 
+            $stmt->close();
+        }
         
-		$stmt = $this->conn->prepare("UPDATE group_users SET status = $status WHERE ( ( groupid = $groupid ) AND ( userid = $userid ) )");        
+		/*$stmt = $this->conn->prepare("UPDATE `group_users` SET `status` = $status WHERE ( ( `groupid` = $groupid ) AND ( `userid` = $userid ) )");        
         $result = $stmt->execute();
 		$count=$stmt->affected_rows;
+
+        error_log("UPDATE `group_users` SET `status` = $status WHERE ( ( `groupid` = $groupid ) AND ( `userid` = $userid ) )",0);
 				
 		if($count==0){
 			//Insert to 'group_users' table
@@ -1096,7 +1112,7 @@ class DbHandlerProfile extends DbHandler{
 			$stmt->bind_param("iii", $groupid,$userid,$status); 
 			$stmt->execute(); 
 			$stmt->close();
-		}
+		}*/
             
     }
 		
@@ -1144,10 +1160,18 @@ class DbHandlerProfile extends DbHandler{
      * @return Array Users list 
      */
     public function getUsersInGroupForMonitor($groupid) {
-        $stmt = $this->conn->prepare("SELECT u.id, u.name, u.email, u.phone FROM users u, group_users gu WHERE  u.id = gu.userid AND gu.groupid = ? AND gu.status <> 4");
+        //$stmt = $this->conn->prepare("SELECT u.id, u.name, u.email, u.phone FROM users u, group_users gu WHERE  u.id = gu.userid AND gu.groupid = ? AND gu.status <> 4");
+        $stmt = $this->conn->prepare("
+                  SELECT u.id, u.name, u.email, u.phone, u.status, gu.status AS status_in_group, u.changed_at 
+                        FROM 
+                            group_users AS gu 
+                        INNER JOIN users u ON gu.userid = u.id 
+                        WHERE  gu.groupid = ? AND gu.status <> 4");
+
+
         $stmt->bind_param("i", $groupid); 
         if($stmt->execute()) {
-            $stmt->bind_result($id, $name, $email, $phone);
+            $stmt->bind_result($id, $name, $email, $phone, $status, $status_in_group, $changed_at);
             $result=array();
             while($stmt->fetch()) {
                 $res=array();
@@ -1155,6 +1179,12 @@ class DbHandlerProfile extends DbHandler{
                 $res["name"]=$name;
                 $res["email"]=$email;
                 $res["phone"]=$phone;
+                $res["status"]=$status;
+                $res["status_in_group"]=$status_in_group;
+
+                $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+                $res["changed_at"] = $timestamp_object->getTimestamp();
+
                 $result[]=$res;
             }
             $stmt->close();
@@ -1526,13 +1556,13 @@ class DbHandlerProfile extends DbHandler{
 	}
 	
 	/**
-	* Create new group from web (adminpanel)
+	* Create new empty group from web (adminpanel)
 	* @param $name string Name of new group
 	* @param $status integer Status of group
 	* @param $info json Information of new group
 	* @return result
 	*/
-	public function createGroupWeb($name,$status,$type,$info) {
+	public function createGroupEmptyWeb($name,$status,$type,$info) {
 		$date_string=date('Y-m-d H:i:s',time());
 		//Insert to 'groups' table
 		$stmt = $this->conn->prepare("INSERT INTO groups(name,status,type,info,created_at) values(?,?,?,?,?)");
@@ -1543,18 +1573,35 @@ class DbHandlerProfile extends DbHandler{
 		return $result;
 	}
 
+    /**
+    * Create new group from web (adminpanel)
+    * @param $name string Name of new group
+    * @param $status integer Status of group
+    * @param $info json Information of new group
+    * @return result
+    */
+    public function createGroupWeb($name,$address,$phone,$status,$type,$info) {
+        $date_string=date('Y-m-d H:i:s',time());
+        //Insert to 'groups' table
+        $stmt = $this->conn->prepare("INSERT INTO groups(name,address,phone,status,type,info,created_at) values(?,?,?,?,?,?,?)");
+        $stmt->bind_param("sssiiss", $name,$address,$phone,$status,$type,$info,$date_string);
+        $stmt->execute();
+        $result = $this->conn->insert_id;
+        $stmt->close();
+        return $result;
+    }
+
 	/**
 	* Update group from web (adminpanel)
 	* @param $id integer Id of updated group
 	* @param $name string Name of group
-	* @param $status integer Status of group
 	* @param $info json Information of group
 	* @return result
 	*/
 	public function updateGroupWeb($id,$name,$address,$phone,$info) {
 		//Update to 'groups' table
-		$stmt = $this->conn->prepare("UPDATE `groups` SET `name`=?, `address`=?, `phone`=?, `status`=?, `info`=? WHERE `id`=?");
-		$stmt->bind_param("sssisi", $name,$address,$phone,$status,$info,$id);
+		$stmt = $this->conn->prepare("UPDATE `groups` SET `name`=?, `address`=?, `phone`=?, `info`=? WHERE `id`=?");
+		$stmt->bind_param("ssssi", $name,$address,$phone,$info,$id);
 		$result = $stmt->execute();
 		$stmt->close();
 		return $result;
@@ -1760,6 +1807,43 @@ class DbHandlerProfile extends DbHandler{
 		
 		$this->changeGroupInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $customerid);
 		
+	}
+	
+	public function removeDefaultInstallment($tag,$customerid){
+		
+		$groups=$this->getGroupById($customerid);
+		
+		
+		if((!isset($groups))||(!isset($groups[0])))
+			return;
+		
+		$group=$groups[0];
+		
+		if(!isset($group["info"]))
+			return;
+				
+		$info=json_decode($group["info"],true);
+		
+		if(!isset($info["default_installments"]))
+			return;
+		
+		$default_installments=$info["default_installments"];
+		
+		$tag_found=false;
+		
+		while(($key = array_search($tag, $default_installments)) !== false) {
+			unset($default_installments[$key]);		
+			
+			$default_installments=array_values($default_installments);
+			
+			$tag_found=true;
+		}
+		
+		$info["default_installments"]=$default_installments;
+		
+		if($tag_found){
+			$this->changeGroupInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $customerid);
+		}
 	}
 	
 	public function clearDefaultInstallments($customerid,$contractor_sales){
