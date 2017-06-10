@@ -682,13 +682,15 @@ protected function outgoingOrdersDelta($connect,$timestamp){
 	
 	foreach($groups as $group){
 		
+		$orders=null;
+		
 		if( ($group["type"]==0) && (($group["status_in_group"]==1)||($group["status_in_group"]==2)) ){			
 			$orders=$this->db_fabricant->getOrdersDeltaOfContractor($group["id"],$timestamp);	
 		}else if($group["type"]==1){			
 			$orders=$this->db_fabricant->getOrdersDeltaOfCustomer($group["id"],$timestamp);			
 		}
 		
-		if(count($orders)>0){
+		if(isset($orders)&&(count($orders)>0)){
 			$json = array();
 			$json["transport"]=TRANSPORT_FABRICANT;
 			$json["type"]=OUTGOING_ORDERS_DELTA;
