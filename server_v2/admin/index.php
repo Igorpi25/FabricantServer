@@ -2119,6 +2119,158 @@ $app->get('/copyproducts49to149', 'authenticate', function() use ($app) {
 });
 
 /**
+* temp url for change home url for images
+* method GET
+* url /copy49to127
+*/
+$app->get('/gethomeurlofimages', 'authenticate', function() use ($app) {
+
+	global $user_id;
+	// creating new contracotor
+	$db = new DbHandlerProfile();
+
+	permissionFabricantAdmin($user_id);
+
+	$db_fabricant = new DbHandlerFabricant();
+	$db_profile = new DbHandlerProfile();
+
+	$response = array();
+	
+	//Продукты
+	$products = $db_fabricant->getAllProducts();
+	$products_ids=array();
+	if ($products) {
+		foreach ($products as $product) {
+			
+			if(strstr($product["info"],"igorserver.ru")){
+				$pair=array();
+				$pair["contractorid"]=$product["contractorid"];
+				$pair["id"]=$product["id"];
+				$products_ids[]=$pair;
+			}
+		}
+	} 
+	
+	//Группы
+	$groups = $db_profile->getAllGroups();
+	$groups_ids=array();
+	if ($groups) {
+		foreach ($groups as $group) {
+			
+			if(strstr(json_encode($group["info"],JSON_UNESCAPED_UNICODE),"igorserver.ru")){
+				$pair=array();
+				$pair["id"]=$group["id"];
+				$groups_ids[]=$pair;
+			}
+		}
+	} 
+	
+	//Пользователи
+	$users = $db_profile->getAllUsers();
+	$users_ids=array();
+	if ($users) {
+		foreach ($users as $user) {
+			
+			if(strstr($user["info"],"igorserver.ru")){
+				$pair=array();
+				$pair["id"]=$user["id"];
+				$users_ids[]=$pair;
+			}
+		}
+	} 
+
+	$response["error"] = false;
+	$response["message"] = "";
+	$response["products_ids"]=$products_ids;
+	$response["users_ids"]=$users_ids;
+	$response["groups_ids"]=$groups_ids;
+	
+	error_log($response["message"]);
+
+	echoResponse(200, $response);
+
+});
+
+$app->get('/changehomeurlofimages', 'authenticate', function() use ($app) {
+
+	global $user_id;
+	// creating new contracotor
+	$db = new DbHandlerProfile();
+
+	permissionFabricantAdmin($user_id);
+
+	$db_fabricant = new DbHandlerFabricant();
+	$db_profile = new DbHandlerProfile();
+
+	$response = array();
+	
+	//Продукты
+	$products = $db_fabricant->getAllProducts();
+	$products_ids=array();
+	if ($products) {
+		foreach ($products as $product) {
+			
+			if(strstr($product["info"],"igorserver.ru")){
+				$new_info=str_replace("igorserver.ru","fabricant.pro",$product["info"]);
+				
+				$db_fabricant->updateProduct($product["id"], $product["name"], $product["price"], $new_info, $product["status"]);
+				
+				$pair=array();
+				$pair["contractorid"]=$product["contractorid"];
+				$pair["id"]=$product["id"];
+				$products_ids[]=$pair;
+			}
+		}
+	} 
+	
+	//Группы
+	$groups = $db_profile->getAllGroups();
+	$groups_ids=array();
+	if ($groups) {
+		foreach ($groups as $group) {
+			$info_string=json_encode($group["info"],JSON_UNESCAPED_UNICODE);
+			if(strstr($info_string,"igorserver.ru")){
+				$new_info=str_replace("igorserver.ru","fabricant.pro",$info_string);
+				
+				$db_profile->changeGroupInfo($new_info,$group["id"]);
+				
+				$pair=array();
+				$pair["id"]=$group["id"];
+				$groups_ids[]=$pair;
+			}
+		}
+	} 
+	
+	//Пользователи
+	$users = $db_profile->getAllUsers();
+	$users_ids=array();
+	if ($users) {
+		foreach ($users as $user) {
+			
+			if(strstr($user["info"],"igorserver.ru")){
+				
+				$new_info=str_replace("igorserver.ru","fabricant.pro",$user["info"]);
+				updateUserInfo($user["id"],$new_info);
+				$pair=array();
+				$pair["id"]=$user["id"];
+				$users_ids[]=$pair;
+			}
+		}
+	} 
+
+	$response["error"] = false;
+	$response["message"] = "";
+	$response["products_ids"]=$products_ids;
+	$response["users_ids"]=$users_ids;
+	$response["groups_ids"]=$groups_ids;
+	
+	error_log($response["message"]);
+
+	echoResponse(200, $response);
+
+});
+
+/**
  * Uploading slides images
  * method POST
  * url /slides/upload/:prefix

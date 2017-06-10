@@ -223,11 +223,11 @@ class DbHandlerFabricant extends DbHandler{
 	}
 
 	public function getAllProducts(){
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c FROM products p");
 		if ($stmt->execute()){
 			$stmt->store_result();
 			if($stmt->num_rows==0) return NULL;
-			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at);
+			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at, $code1c);
 			$result=array();
 			while($stmt->fetch()){
 				$res=array();
@@ -239,6 +239,7 @@ class DbHandlerFabricant extends DbHandler{
 				$res["info"] = $info;
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 				$res["changed_at"] = $timestamp_object->getTimestamp();
+				$res["code1c"] = $code1c;
 				$result[]=$res;
 			}
 			$stmt->close();

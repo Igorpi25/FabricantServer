@@ -456,17 +456,17 @@ class DbHandlerProfile extends DbHandler{
      * returns public columns of 'users' table
      */
     public function getAllUsers() {
-        $stmt = $this->conn->prepare("SELECT u.id, u.name, u.status, u.changed_at, a.filename_icon, a.filename_avatar, a.filename_full FROM users u LEFT OUTER JOIN avatars a ON u.avatar = a.id ");
+        $stmt = $this->conn->prepare("SELECT u.id, u.name, u.status, u.changed_at, a.filename_icon, a.filename_avatar, a.filename_full, u.info FROM users u LEFT OUTER JOIN avatars a ON u.avatar = a.id ");
         
         if ($stmt->execute()) {
         
         
-            $stmt->bind_result($id,$name, $status, $changed_at, $icon, $avatar,$full);            
+            $stmt->bind_result($id,$name, $status, $changed_at, $icon, $avatar,$full,$info);            
             
             $users=array();
             while($stmt->fetch()){
             	    
-            	    $res= array();
+            	$res= array();
 	            $res["id"] = $id;
 	            $res["name"] = $name;
 	            $res["status"] = $status;
@@ -481,10 +481,12 @@ class DbHandlerProfile extends DbHandler{
 	            if($icon) $avatars['icon']=URL_HOME.path_icons.$icon;
 	            
 	            if(count($avatars))
-					$res['avatars']=$avatars;          
+					$res['avatars']=$avatars;   
+
+				$res["info"] = $info;					
 	            
 	            $users[]=$res;
-	    }            
+			}            
             $stmt->close();
             
             return $users;
