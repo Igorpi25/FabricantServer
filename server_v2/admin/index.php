@@ -1520,6 +1520,321 @@ $app->get('/savetoexcel/:id', 'authenticate', function($id) use ($app) {
 });
 
 /**
+ * Get all reports of contractor
+ * method GET
+ * url /contractors/reports/:groupid
+ */
+$app->get('/contractors/reports/:groupid', 'authenticate', function($groupid) use ($app) {
+	$db_profile = new DbHandlerProfile();
+	$db = new DbHandlerFabricant();
+
+	global $user_id;
+	
+	permissionAdminInGroup($user_id, $groupid, $db_profile);
+
+	$result = $db_profile->getGroupById($groupid);
+
+	$response = array();
+
+	$info = json_decode($result[0]["info"], true);
+
+	$reports = NULL;
+
+	if (isset($info["reports"]) && count($info["reports"]) > 0) {
+		$reports = $info["reports"];
+	}
+
+	if ($reports != NULL) {
+		$response["error"] = false;
+		$response["reports"] = $reports[0];
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to get reports. Please try again.";
+	}
+	echoResponse(200, $response);
+});
+
+/**
+ * Save orders 2 excel for castomer 220
+ * method GET
+ * url /reports/orders/excel/220
+ */
+$app->get('/reports/orders/excel/220/:id', 'authenticate', function($id) use ($app) {
+	$db_profile = new DbHandlerProfile();
+	$db = new DbHandlerFabricant();
+
+	global $user_id;
+
+	$response = array();
+	
+	permissionAdminInGroup($user_id, $id, $db_profile);
+
+	try {
+		$selectedstring = $app->request->get('selected');
+		if (empty($selectedstring))
+			throw new Exception('Ни одна строка не выделена');
+
+		$selected = json_decode($selectedstring);
+		$orders = $db->getAllOrdersOfContractorWeb($id);
+		if ($orders == null)
+			throw new Exception('Нет заказов в базе данных');
+
+		$productsid = $colnames = array();
+		$colnames[0] = "";
+		$colnames[1] = "Наименование магазина";
+		$colnames[2] = "Адрес";
+		$productsres = $db->getActiveProductsOfContractor($id);
+
+		if ($productsres == null)
+			throw new Exception('Нет продуктов в базе данных');
+		else {
+			foreach ($productsres as $value) {
+				$colindex = -1;
+				switch ($value["id"]) {
+				    case 5168:
+				        $colindex = 3;
+				        break;
+				    case 5167:
+				        $colindex = 4;
+				        break;
+				    case 5165:
+				        $colindex = 5;
+				        break;
+				    case 5166:
+				        $colindex = 6;
+				        break;
+				    case 5164:
+				        $colindex = 7;
+				        break;
+				    case 5169:
+				        $colindex = 8;
+				        break;
+				    case 5170:
+				        $colindex = 9;
+				        break;
+				    case 5161:
+				        $colindex = 10;
+				        break;
+				    case 5162:
+				        $colindex = 11;
+				        break;
+				    case 5163:
+				        $colindex = 12;
+				        break;
+				    case 5160:
+				        $colindex = 13;
+				        break;
+				    case 5176:
+				        $colindex = 14;
+				        break;
+				    case 5171:
+				        $colindex = 15;
+				        break;
+				    case 5173:
+				        $colindex = 16;
+				        break;
+				    case 5172:
+				        $colindex = 17;
+				        break;
+				    case 5174:
+				        $colindex = 18;
+				        break;
+				    
+				}
+				if ($colindex != -1) {
+					$productsid[$colindex] = $value["id"];
+					$colnames[$colindex] = $value["name"];
+				}
+			}
+		}
+
+		$data = array();
+
+		$orderindex=0;
+		foreach ($orders as $order) {
+            if (in_array($order["id"], $selected)) {
+            	$orderindex++;
+                $orderproducts = array();
+                $orderproducts[0] = $orderindex;
+                $orderproducts[1] = $order["customerName"];
+                $orderproducts[2] = $order["address"];
+                foreach ($productsid as $i => $productid) {
+                    $cnt = 0;
+                    foreach ($order["items"] as $item) {
+                        if ($item["productid"] == $productid) {
+                            $cnt = $item["count"];
+                        }
+                    }
+                    $orderproducts[$i] = $cnt;
+                }
+                $data[] = $orderproducts;
+            }
+        }
+		// Подключаем класс для работы с excel
+		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+		// Подключаем класс для вывода данных в формате excel
+		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/Writer/Excel5.php';
+		// New PHPExcel class
+		$xls = new PHPExcel();
+		// Set and get active sheet
+		$xls->setActiveSheetIndex(0);
+		$sheet = $xls->getActiveSheet();
+		// Sheet title
+		$sheet->setTitle('Заказы');
+
+		foreach ($colnames as $i=>$colname) {
+			$sheet->setCellValueByColumnAndRow($i, 1, $colname);
+			$sheet->getColumnDimensionByColumn($i)->setWidth(10);
+		}
+		$sheet->getColumnDimension('A')->setAutoSize(true);
+		$sheet->getColumnDimension('B')->setAutoSize(true);
+		$sheet->getColumnDimension('C')->setAutoSize(true);
+
+		foreach ($data as $orderskey => $order) {
+			$i=0;
+			//$sheet->setCellValueByColumnAndRow(0, $orderskey+2, $i+1);
+			foreach ($order as $itemkey => $item) {
+				$sheet->setCellValueByColumnAndRow($itemkey, $orderskey+2, $item);
+			}
+		}
+
+		$filename = date('dmY').'-orders-excel-'.uniqid().".xls";
+		//header('Content-type:application/vnd.ms-excel');
+		//header('Content-Disposition:attachment;filename="'.$filename.'"');
+		$objWriter = new PHPExcel_Writer_Excel5($xls);
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+
+		$objWriter->save($path);
+
+		$response["error"] = false;
+		$response["message"] = 'Файл успешно создан';
+		$response["url"] = 'http://'.$_SERVER["HTTP_HOST"].'/v2/reports/'.$filename;
+	}
+	catch (Exception $e) {
+		// Exception occurred. Make error flag true
+		$response["error"] = true;
+		$response["message"] = $e->getMessage();
+	}
+	echoResponse(200, $response);
+});
+
+/**
+ * Save products table 2 excel
+ * method GET
+ * url products/export/excel/all/:id
+ */
+$app->get('/products/export/excel/all/:contractorid', 'authenticate', function($contractorid) use ($app) {
+	$fdb = new DbHandlerFabricant();
+	$db = new DbHandlerProfile();
+	$response = array();
+	try {
+		$products = $fdb->getProductsOfContractor($contractorid);
+		$contractor = $db->getGroupById($contractorid);
+
+		if ($products == null)
+			throw new Exception('Нет данных для выгрузки');
+
+		$colnames = array();
+
+        $colnames[] = "id";
+        $colnames[] = "name_document";
+        $colnames[] = "name";
+        $colnames[] = "name_full";
+        $colnames[] = "price";
+        $colnames[] = "summary";
+
+        $colnames[] = "groups";
+        $colnames[] = "priority";
+        $colnames[] = "icon";
+        $colnames[] = "placeholder";
+
+		$colnames[] = "slides_count";
+		$colnames[] = "info_count";
+        $colnames[] = "units_count";
+
+
+		// Подключаем класс для работы с excel
+		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+		// Подключаем класс для вывода данных в формате excel
+		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/Writer/Excel5.php';
+		// New PHPExcel class
+		$xls = new PHPExcel();
+		// Set and get active sheet
+		$xls->setActiveSheetIndex(0);
+		$sheet = $xls->getActiveSheet();
+		// Sheet title
+		$sheet->setTitle('Продукты');
+
+		foreach ($colnames as $i=>$colname) {
+			$sheet->setCellValueByColumnAndRow($i, 1, $colname);
+			$sheet->getColumnDimensionByColumn($i)->setAutoSize(true);
+		}
+
+		$contractor_info = json_decode($contractor[0]["info"], true);
+		$contractor_groups = $contractor_info["products_groups"];
+
+		foreach ($products as $productkey => $product) {
+			$i = 0;
+			$info = json_decode($product["info"], true);
+
+			$sheet->setCellValueByColumnAndRow(0, $productkey+2, $product["id"]);
+			$sheet->setCellValueByColumnAndRow(1, $productkey+2, $product["name"]);
+			$sheet->setCellValueByColumnAndRow(2, $productkey+2, $info["name"]["text"]);
+			$sheet->setCellValueByColumnAndRow(3, $productkey+2, $info["name_full"]["text"]);
+			$sheet->setCellValueByColumnAndRow(4, $productkey+2, $product["price"]);
+			$sheet->setCellValueByColumnAndRow(5, $productkey+2, $info["summary"]["text"]);
+
+			$info_count = 0;
+			$slides_count = 0;
+
+			foreach ($info["details"] as $detail) {
+				if ($detail["type"] == 1) {
+					$info_count++;
+				} else if ($detail["type"] == 2) {
+					$slides_count++;
+				}
+			}
+
+			$info_tags = "";
+			foreach ($info["tags"] as $value) {
+				foreach ($contractor_groups as $val) {
+					if ($value == $val["tag_product"])
+						$info_tags .= $val["title"]["text"];
+				}
+			}
+
+			$sheet->setCellValueByColumnAndRow(6, $productkey+2, $info_tags);
+			$sheet->setCellValueByColumnAndRow(7, $productkey+2, $info["priority"]);
+			$sheet->setCellValueByColumnAndRow(8, $productkey+2, $info["icon"]["image_url"]);
+			$sheet->setCellValueByColumnAndRow(9, $productkey+2, $info["placeholder"]["image_url"]);
+
+			$sheet->setCellValueByColumnAndRow(10, $productkey+2, $slides_count);
+			$sheet->setCellValueByColumnAndRow(11, $productkey+2, $info_count);
+			$sheet->setCellValueByColumnAndRow(12, $productkey+2, count($info["units"]));
+		}
+
+		$filename = date('dmY').'-products-tmp-'.uniqid().".xls";
+		//header('Content-type:application/vnd.ms-excel');
+		//header('Content-Disposition:attachment;filename="'.$filename.'"');
+		$objWriter = new PHPExcel_Writer_Excel5($xls);
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+
+		$objWriter->save($path);
+
+		$response["error"] = false;
+		$response["message"] = 'Файл успешно создан';
+		$response["url"] = 'http://'.$_SERVER["HTTP_HOST"].'/v2/reports/'.$filename;
+	}
+	catch (Exception $e) {
+		// Exception occurred. Make error flag true
+		$response["error"] = true;
+		$response["message"] = $e->getMessage();
+	}
+	echoResponse(200, $response);
+});
+
+/**
  * Uploading xls file
  * method POST
  * url /xls/upload:id
