@@ -797,6 +797,12 @@ $app->post('/orders/create', 'authenticate', function () use ($app)  {
 		checkUserPermissionToGroups($order["contractorid"],$order["customerid"]);
 
 		$record=makeOrderRecord($order);
+		
+		//Customer user info to record
+		$customer_user=$db_profile->getUserById($user_id);
+		$record["customerUserId"]=$user_id;
+		$record["customerUserName"]=$customer_user["name"];
+		$record["customerUserPhone"]=$customer_user["phone"];
 
 		//Console command
 		$json_header=array();
@@ -1431,6 +1437,11 @@ function updateOrder($old_order_id,$order,$user_id) {
 		$record["id"]=$old_order_id;
 		$record["created_at"]=$old_order_record["created_at"];
 		$record["updated"]=true;
+		
+		//Customer user info to record
+		$record["customerUserId"]=$old_order_record["customerUserId"];
+		$record["customerUserName"]=$old_order_record["customerUserName"];
+		$record["customerUserPhone"]=$old_order_record["customerUserPhone"];
 
 		//Transfer
 		if($record["customerid"]!=$old_order_record["customerid"]){
@@ -1573,9 +1584,6 @@ function makeOrderRecord($order){
 			}
 		}
 
-
-		//Сustomer User
-		$customer_user=$db_profile->getUserById($user_id);
 
 		//Installment
 		$logs[]="Installment";
@@ -1734,9 +1742,6 @@ function makeOrderRecord($order){
 		$record["contractorName"]=$contractor["name"];
 		$record["customerid"]=$customerid;
 		$record["customerName"]=$customer["name"];
-		$record["customerUserId"]=$user_id;
-		$record["customerUserName"]=$customer_user["name"];
-		$record["customerUserPhone"]=$customer_user["phone"];
 
 		$record["items"]=$basket;
 		$record["costs"]=$costs;
