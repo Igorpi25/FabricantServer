@@ -405,6 +405,7 @@ $app->post('/groups/removeuser', 'authenticate', function() use ($app) {
 	}
 	echoResponse(201, $response);
 });
+
 //--------------------Products----------------------------
 
 /**
@@ -1318,6 +1319,283 @@ $app->post('/orders/dt/:contractorid', 'authenticate', function($contractorid) u
 	echoResponse(200, $response);
 });
 
+//---------------Пакетная обработка-------------
+
+/**
+ * Получает информацию о товарах из Excel файла
+ * method POST
+ */
+$app->post('/excel_form_products', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+
+	error_log("-------------excel_form_products".$_FILES["xls"]["name"]."----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
+
+	$db_profile=new DbHandlerProfile();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+
+
+	//-------------------Берем Excel файл----------------------------
+	
+	if (!isset($_FILES["xls"])) {
+		throw new Exception('Param xls is missing');
+	}
+
+	// Check if the file is missing
+	if (!isset($_FILES["xls"]["name"])) {
+		throw new Exception('Property name of xls param is missing');
+	}
+
+	// Check the file size > 100MB
+	if($_FILES["xls"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
+	
+	$tmpFile = $_FILES["xls"]["tmp_name"];
+
+	$filename = date('dmY').'-'.uniqid('excel-form-products-').".xls";
+	$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+
+	//Считываем закодированный файл xls в строку
+	$data = file_get_contents($tmpFile);
+	
+	//Декодируем строку из base64 в нормальный вид
+	//$data = base64_decode($data);
+
+	//Теперь нормальную строку сохраняем в файл
+	$success=false;
+	if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+		@fwrite($fp, $data);
+		@fclose($fp);
+		$success=true;
+	}
+	
+	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+	unset($data);
+
+	//Ошибка декодинга
+	if(!$success){
+		throw new Exception('Failed when decoding the recieved file');
+	}
+
+	// Подключаем класс для работы с excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+	
+	// Подключаем класс для вывода данных в формате excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
+
+	$objPHPExcel = PHPExcel_IOFactory::load($path);
+	
+	// Set and get active sheet
+	$objPHPExcel->setActiveSheetIndex(0);
+	$worksheet = $objPHPExcel->getActiveSheet();
+	$worksheetTitle = $worksheet->getTitle();
+	$highestRow = $worksheet->getHighestRow();
+	$highestColumn = $worksheet->getHighestColumn();
+	$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+	$nrColumns = ord($highestColumn) - 64;
+
+	$db_fabricant = new DbHandlerFabricant();
+
+	$products=array();
+	for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
+		$cells = array();
+
+		for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
+			$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
+			$cells[] = $cell->getValue();
+		}
+
+		$code1c=intval($cells[0]);		
+		$id=intval($cells[1]); 
+		$name=(empty($cells[2]))?"":$cells[2];
+		$price=floatval($cells[3]);
+		$group=$cells[4];
+		$summary=(empty($cells[5]))?"":$cells[5];
+		
+		
+		try{
+			$photos=json_decode($cells[6],true);
+		}catch(Exception $e){
+			$photos=array();
+		}
+		
+		try{
+			$units=json_decode($cells[7],true);
+		}catch(Exception $e){
+			$units=array();
+		}
+		
+		$details=array();
+		$slides=array();
+		
+		if(count($photos)>0){
+		
+			$slider=array();
+			$slider["type"]=2;
+			
+			foreach($photos as $photo){
+				$slide=array();
+				
+				$slide["photo"]=array();
+				$slide["photo"]["image_url"]=URL_HOME.path_products. ltrim(str_replace(trim(" \ "),"/",$photo),"/\ "); 
+				$slide["title"]=array();
+				$slide["title"]["text"]="";		
+				
+				$slides[]=$slide;
+			}
+			
+			$slider["slides"]=$slides;
+			
+			$details[]=$slider;
+		}
+		
+		$info=array();
+		
+		$info["name"]=array();
+		$info["name"]["text"]=$name;
+		
+		$info["name_full"]=array();	
+		$info["name_full"]["text"]=$name;
+		
+		$info["price"]=$price;
+		
+		$info["summary"]=array();
+		$info["summary"]["text"]=$summary;
+		
+		
+		$info["icon"]=array();
+		$info["icon"]["image_url"]=(count($slides)>0)?$slides[0]["photo"]["image_url"]:"";
+		
+		$info["tags"]=array();
+		if(!empty(trim($group))){
+			$info["tags"][]=$group;
+		}
+		
+		$info["prices"]=array();
+		$info["prices_data"]=array();
+		$info["priority"]=0;
+		
+		$info["details"]=$details;
+		
+		$info["units"]=$units;
+		
+		$info["placeholder"]=array();
+		$info["placeholder"]["image_url"]="";
+		
+		$product=$db_fabricant->getProductById($id);
+
+		//Если код продукта не существует в контракторе, создаем новый продукт
+		if(!isset($product)){
+			
+			if(empty($id)){
+				$product=$db_fabricant->createProduct($contractorid, $name, $price, json_encode($info,JSON_UNESCAPED_UNICODE), 1, $code1c);		
+				$import_status="created";
+			}else{
+				$product=$db_fabricant->createProductWithId($id,$contractorid, $name, $price, json_encode($info,JSON_UNESCAPED_UNICODE), 1, $code1c);		
+				$import_status="createdWithId";
+			}
+			
+			error_log($rowIndex.". ".$import_status." id=".$product["id"]." code1c=".$product["code1c"]." ".$product["name"]." price=".$product["price"]." group=".$group." slides:".count($slides)." units:".count($units));
+			
+		}else{
+			
+			$db_fabricant->updateProduct($id, $name, $price, json_encode($info,JSON_UNESCAPED_UNICODE), $product["status"]); 
+			$db_fabricant->updateProductCode($id, $code1c);	
+			error_log($rowIndex.". updated id=".$id." code1c=".$code1c." ".$name." price=".$price." group=".$group." slides:".count($slides)." units:".count($units));
+		}
+		
+		$products[]=$product;
+	}
+	
+	$response=array();
+	$response["error"]=false;
+	$response["success"]=1;
+	$response["products"]=$products;
+	
+	echoResponse(200,$response);
+
+});
+
+/**
+* temp url for copy cash to installment
+* method GET
+* url /copy49to127
+*/
+$app->post('/cashtoinstallment', 'authenticate', function() use ($app) {
+
+	global $user_id;
+	// creating new contracotor
+	$db_fabricant = new DbHandlerFabricant();
+
+	permissionFabricantAdmin($user_id);
+	
+	verifyRequiredParams(array('contractorid', 'installment_tag'));
+
+	$contractorid = $app->request->post('contractorid');
+	$installment_tag = $app->request->post('installment_tag');
+
+	$products = $db_fabricant->getProductsOfContractor($contractorid);
+
+	$response = array();
+
+	if ($products) {
+		foreach ($products as $product) {
+			$info=json_decode($product["info"],true);
+			
+			if(!isset($info))$info=array();
+			if(!isset($info["prices"]))$info["prices"]=array();
+			
+			$prices=array();			
+			foreach($info["prices"] as $price){
+				if($price["name"]!=$installment_tag)$prices[]=$price;
+			}
+			
+			$new_price=array();
+			$new_price["name"]=$installment_tag;
+			$new_price["value"]=$product["price"];
+			
+			$prices[]=$new_price;
+			
+			$info["prices"]=$prices;
+			
+			$db_fabricant->updateProduct($product["id"], $product["name"], $product["price"], json_encode($info,JSON_UNESCAPED_UNICODE), $product["status"]); 
+			//consoleCommandProductUpdated($product["id"]);
+		}
+
+	} else {
+		// get contractor products error
+		$response["error"] = true;
+		$response["message"] = "Contractor " . $contractorid . " products get error.";
+		echoResponse(500, $response);
+		$app->stop();
+	}
+
+	$response["error"] = false;
+	$response["message"] = "Count of changed products = ".count($products);
+
+	echoResponse(200, $response);
+
+});
+
 //--------------------Uploads----------------------------
 
 /**
@@ -1529,7 +1807,7 @@ $app->get('/contractors/reports/:groupid', 'authenticate', function($groupid) us
 	$db = new DbHandlerFabricant();
 
 	global $user_id;
-	
+
 	permissionAdminInGroup($user_id, $groupid, $db_profile);
 
 	$result = $db_profile->getGroupById($groupid);
@@ -1567,7 +1845,7 @@ $app->get('/reports/orders/excel/220/:id', 'authenticate', function($id) use ($a
 	global $user_id;
 
 	$response = array();
-	
+
 	permissionAdminInGroup($user_id, $id, $db_profile);
 
 	try {
@@ -1640,7 +1918,7 @@ $app->get('/reports/orders/excel/220/:id', 'authenticate', function($id) use ($a
 				    case 5174:
 				        $colindex = 18;
 				        break;
-				    
+
 				}
 				if ($colindex != -1) {
 					$productsid[$colindex] = $value["id"];
@@ -2010,16 +2288,16 @@ $app->post('/1c_products', function() use ($app) {
 
 
 		$db_fabricant = new DbHandlerFabricant();
-		
+
 		$count_of_changed_products=0;
 		$count_of_products=0;
 		$count_of_unknown_products=0;
-		
+
 		$products=array();
 
 		for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
 			$cells = array();
-			
+
 			$count_of_products++;
 
 			for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
@@ -2039,15 +2317,15 @@ $app->post('/1c_products', function() use ($app) {
 			//Если код продукта не существует в контракторе, создаем новый продукт
 			if(!isset($product)){
 				/*$name="(Empty)";
-				try{	
-					$string = iconv('utf-8', 'cp1252', $nomenclature);					
+				try{
+					$string = iconv('utf-8', 'cp1252', $nomenclature);
 					$name = iconv('cp1251', 'utf-8', $string);
 				//$name=mb_convert_encoding($nomenclature,"ISO-8859-15","CP1251");
 				}catch(Exception $e){
 					error_log("Product code=".$code." iconv error");
 					$name=$nomenclature;
 				}
-				
+
 				$productid = $db_fabricant->createProduct($contractorid, $name, 0.0, "", 1, $code);
 				$product=$db_fabricant->getProductById($productid);
 				*/
@@ -2055,15 +2333,15 @@ $app->post('/1c_products', function() use ($app) {
 				$count_of_unknown_products++;
 				$product=array();
 				$product["id"]=0;
-				$product["code1c"]=$code;				
+				$product["code1c"]=$code;
 				$product["name"]=$nomenclature;
 				$product["price"]=0;
 				$product["info"]="{}";
 				$product["status"]=-1;
 				$product["changed_at"]=0;
-				
+
 			}
-			
+
 			//Сохраняем эти данные
 			$product["after_rest"]=$after_rest;
 
@@ -2087,7 +2365,7 @@ $app->post('/1c_products', function() use ($app) {
 				}
 
 			}
-			
+
 			$products[]=$product;
 
 		}
@@ -2114,13 +2392,13 @@ $app->post('/1c_products', function() use ($app) {
 		//$response["success"] = 0;
 		//$response = $e->getMessage();
 	//}
-	
+
 	$xls_out=getExcelOfProducts($products);
-	
+
 	// Выводим содержимое файла
 	$objWriter = new PHPExcel_Writer_Excel5($xls_out);
 	$objWriter->save('php://output');
-	
+
 });
 
 /**
@@ -2141,7 +2419,7 @@ $app->post('/1c_products_report', function() use ($app) {
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
-		
+
 	//Проверяем логин и пароль
 	if(!$db_profile->checkLoginByPhone($phone,$password)){
 		//Проверяем доступ админской части группы
@@ -2158,69 +2436,69 @@ $app->post('/1c_products_report', function() use ($app) {
 	$products=$db_fabricant->getProductsOfContractor($contractorid);
 
 	$xls_out=getExcelOfProducts($products);
-	
+
 	// Выводим содержимое файла
 	$objWriter = new PHPExcel_Writer_Excel5($xls_out);
 	$objWriter->save('php://output');
-	
+
 });
 
 function getExcelOfProducts($products){
-	
+
 	// Подключаем класс для работы с excel
 	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
 	// Подключаем класс для вывода данных в формате excel
 	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
-		
+
 	// New PHPExcel class
 	$xls = new PHPExcel();
 
 	$sheet = $xls->setActiveSheetIndex(0);
-	
+
 	//Заполнение шапки
 	$sheet->setCellValue("A1", 'ИД');
-	$sheet->setCellValue("B1", 'Код');		
+	$sheet->setCellValue("B1", 'Код');
 	$sheet->setCellValue("C1", 'Наименование');
 	$sheet->setCellValue("D1", 'Цена');
 	$sheet->setCellValue("E1", 'Нет в наличии');
 	$sheet->setCellValue("F1", 'Статус');
-	
+
 	$row_index=2;
-	
+
 	foreach($products as $product){
-		
+
 		$sheet->setCellValue("A$row_index", $product["id"]);
 		$sheet->setCellValue("B$row_index", $product["code1c"]);
 		$sheet->setCellValue("C$row_index", $product["name"]);
 		$sheet->setCellValue("D$row_index", $product["price"]);
-		
+
 		try{
 			$info=json_decode($product["info"],true);
 			$tags=$info["tags"];
-			
+
 			if(in_array("not_in_stock",$info["tags"])){
 				$sheet->setCellValue("E$row_index", "Нет в наличии(".$product["after_rest"].")");
 			}else{
 				$sheet->setCellValue("E$row_index", $product["after_rest"]);
 			}
 		}catch(Exception $e){}
-		
+
 		$status="Неизвестный";
 		switch($product["status"]){
 			case -1: $status="Отсутствует";break;
 			case 1: $status="Создан";break;
 			case 2: $status="Опубликован";break;
 			case 3: $status="Снят с публикации";break;
-			case 4: $status="Удален";break;			
-		}		
+			case 4: $status="Удален";break;
+		}
 		$sheet->setCellValue("F$row_index", $status);
-		
+
 		if($product["changed_at"]>0)
 			$sheet->setCellValue("G$row_index", date('Y-m-d H:i:s',$product["changed_at"]));
-		
+
 		$row_index++;
 	}
-	
+
 	// Выводим HTTP-заголовки
 	 header ( "Expires: Mon, 1 Apr 1974 05:00:00 GMT" );
 	 header ( "Last-Modified: " . gmdate("D,d M YH:i:s") . " GMT" );
@@ -2285,12 +2563,12 @@ $app->post('/1c_orders/:phone/:password/:contractorid/:last_timestamp', function
 
 	$sheet_index = 0;
 	foreach($orders as $order){
-		
+
 		//Только заказы в обработке импортируются в 1С
 		if($order["status"]!=1){
 			continue;
 		}
-	
+
 		//Создание нового листа, первый создается по умолчанию
 		if($sheet_index > 0){
 			$xls->createSheet();
@@ -2302,11 +2580,11 @@ $app->post('/1c_orders/:phone/:password/:contractorid/:last_timestamp', function
 
 		//Заполнение шапки
 		$sheet->setCellValue("B1", 'ID Заказа');
-		$sheet->setCellValue("C1", $order["id"]);		
+		$sheet->setCellValue("C1", $order["id"]);
 		$sheet->setCellValue("D1", date('Y-m-d H:i:s',$order["changed_at"]));
 		$sheet->setCellValue("B2", 'Статус заказа');
 		$sheet->setCellValue("C2", $order["status"]);
-		
+
 		$sheet->setCellValue("B3", 'ID Заказчика');
 		$sheet->setCellValue("C3", $order["customerid"]);
 
@@ -2396,10 +2674,10 @@ $app->get('/copyproducts49to149', 'authenticate', function() use ($app) {
 
 	$contractorid = 49;
 	$testContractorId = 149;
-	
+
 	//Удаляем все продукты тестового контрактора
 	$deleted_count=$dbf->removeAllProductsOfContractor($testContractorId);
-	
+
 	$products = $dbf->getProductsOfContractor($contractorid);
 
 	$response = array();
@@ -2426,7 +2704,7 @@ $app->get('/copyproducts49to149', 'authenticate', function() use ($app) {
 
 	$response["error"] = false;
 	$response["message"] = "Removed all ".$deleted_count." products from contractor(".$contractorid."). And copied ".count($products)."from contractor(".$contractorid.") to contractor(".$testContractorId.").";
-	
+
 	error_log($response["message"]);
 
 	echoResponse(200, $response);
@@ -2450,13 +2728,13 @@ $app->get('/gethomeurlofimages', 'authenticate', function() use ($app) {
 	$db_profile = new DbHandlerProfile();
 
 	$response = array();
-	
+
 	//Продукты
 	$products = $db_fabricant->getAllProducts();
 	$products_ids=array();
 	if ($products) {
 		foreach ($products as $product) {
-			
+
 			if(strstr($product["info"],"igorserver.ru")){
 				$pair=array();
 				$pair["contractorid"]=$product["contractorid"];
@@ -2464,42 +2742,42 @@ $app->get('/gethomeurlofimages', 'authenticate', function() use ($app) {
 				$products_ids[]=$pair;
 			}
 		}
-	} 
-	
+	}
+
 	//Группы
 	$groups = $db_profile->getAllGroups();
 	$groups_ids=array();
 	if ($groups) {
 		foreach ($groups as $group) {
-			
+
 			if(strstr(json_encode($group["info"],JSON_UNESCAPED_UNICODE),"igorserver.ru")){
 				$pair=array();
 				$pair["id"]=$group["id"];
 				$groups_ids[]=$pair;
 			}
 		}
-	} 
-	
+	}
+
 	//Пользователи
 	$users = $db_profile->getAllUsers();
 	$users_ids=array();
 	if ($users) {
 		foreach ($users as $user) {
-			
+
 			if(strstr($user["info"],"igorserver.ru")){
 				$pair=array();
 				$pair["id"]=$user["id"];
 				$users_ids[]=$pair;
 			}
 		}
-	} 
+	}
 
 	$response["error"] = false;
 	$response["message"] = "";
 	$response["products_ids"]=$products_ids;
 	$response["users_ids"]=$users_ids;
 	$response["groups_ids"]=$groups_ids;
-	
+
 	error_log($response["message"]);
 
 	echoResponse(200, $response);
@@ -2518,26 +2796,26 @@ $app->get('/changehomeurlofimages', 'authenticate', function() use ($app) {
 	$db_profile = new DbHandlerProfile();
 
 	$response = array();
-	
+
 	//Продукты
 	$products = $db_fabricant->getAllProducts();
 	$products_ids=array();
 	if ($products) {
 		foreach ($products as $product) {
-			
+
 			if(strstr($product["info"],"igorserver.ru")){
 				$new_info=str_replace("igorserver.ru","fabricant.pro",$product["info"]);
-				
+
 				$db_fabricant->updateProduct($product["id"], $product["name"], $product["price"], $new_info, $product["status"]);
-				
+
 				$pair=array();
 				$pair["contractorid"]=$product["contractorid"];
 				$pair["id"]=$product["id"];
 				$products_ids[]=$pair;
 			}
 		}
-	} 
-	
+	}
+
 	//Группы
 	$groups = $db_profile->getAllGroups();
 	$groups_ids=array();
@@ -2546,24 +2824,24 @@ $app->get('/changehomeurlofimages', 'authenticate', function() use ($app) {
 			$info_string=json_encode($group["info"],JSON_UNESCAPED_UNICODE);
 			if(strstr($info_string,"igorserver.ru")){
 				$new_info=str_replace("igorserver.ru","fabricant.pro",$info_string);
-				
+
 				$db_profile->changeGroupInfo($new_info,$group["id"]);
-				
+
 				$pair=array();
 				$pair["id"]=$group["id"];
 				$groups_ids[]=$pair;
 			}
 		}
-	} 
-	
+	}
+
 	//Пользователи
 	$users = $db_profile->getAllUsers();
 	$users_ids=array();
 	if ($users) {
 		foreach ($users as $user) {
-			
+
 			if(strstr($user["info"],"igorserver.ru")){
-				
+
 				$new_info=str_replace("igorserver.ru","fabricant.pro",$user["info"]);
 				updateUserInfo($user["id"],$new_info);
 				$pair=array();
@@ -2571,14 +2849,14 @@ $app->get('/changehomeurlofimages', 'authenticate', function() use ($app) {
 				$users_ids[]=$pair;
 			}
 		}
-	} 
+	}
 
 	$response["error"] = false;
 	$response["message"] = "";
 	$response["products_ids"]=$products_ids;
 	$response["users_ids"]=$users_ids;
 	$response["groups_ids"]=$groups_ids;
-	
+
 	error_log($response["message"]);
 
 	echoResponse(200, $response);

@@ -53,9 +53,6 @@ class DbHandlerFabricant extends DbHandler{
  
 	/**
 	 * Creating new user
-	 * @param String $name User full name
-	 * @param String $email User login email id
-	 * @param String $password User login password
 	 */
 	public function createProduct($contractorid, $name, $price, $info, $status, $code1c) {
 		
@@ -66,6 +63,24 @@ class DbHandlerFabricant extends DbHandler{
 		// insert query
 		$stmt = $this->conn->prepare("INSERT INTO products(contractorid, name, price, info, status, code1c) values(?, ?, ?, ?, ?, ?)");
 		$stmt->bind_param("isdsii", $contractorid, $name, $price, $info, $status, $code1c);
+		$stmt->execute();
+		$result = $this->conn->insert_id;
+		$stmt->close();
+		return $result;
+	}
+	
+	/**
+	 * Creating new user with specified id
+	 */
+	public function createProductWithId($id,$contractorid, $name, $price, $info, $status, $code1c) {
+		
+		if(empty($info)){
+			$info="{}";
+		}
+		
+		// insert query
+		$stmt = $this->conn->prepare("INSERT INTO products(id,contractorid, name, price, info, status, code1c) values(?, ?, ?, ?, ?, ?, ?)");
+		$stmt->bind_param("iisdsii", $id, $contractorid, $name, $price, $info, $status, $code1c);
 		$stmt->execute();
 		$result = $this->conn->insert_id;
 		$stmt->close();

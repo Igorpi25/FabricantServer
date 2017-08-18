@@ -24,6 +24,7 @@ define("path_images",'/v2/images');
 define("path_fulls", path_images.'/fulls/');
 define("path_avatars", path_images.'/avatars/');
 define("path_icons", path_images.'/icons/');
+define("path_products", path_images.'/products/');
 
 define("URL_HOME","http://fabricant.pro");//set here your domen home url
 
