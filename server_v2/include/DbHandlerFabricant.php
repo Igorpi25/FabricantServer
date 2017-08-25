@@ -1185,6 +1185,7 @@ class DbHandlerFabricant extends DbHandler{
 	
 	public function getOrdersDeltaOfCustomer($customerid, $timestamp) {
 	
+		//Здесь используется order_operation, а не просто order из-за того, что заказы могут быть переданы от одного заказчика другому (насколько я помню так было, я давно это сделал)
         $stmt = $this->conn->prepare("
 			SELECT p.orderid AS id, p.contractorid, p.customerid, CASE p.type WHEN 5 THEN 5 ELSE o.status END AS status, p.record, o.created_at AS created_at, p.created_at AS changed_at 
 			FROM orders_operations p 
@@ -1242,6 +1243,53 @@ class DbHandlerFabricant extends DbHandler{
 		$date_string=date('Y-m-d H:i:s',$timestamp);
 		
         $stmt->bind_param( "is", $contractorid,$date_string);
+		
+		
+		$orders=array();
+		
+        if ($stmt->execute()) {
+        			
+            $stmt->bind_result($id,$contractorid,$customerid, $status, $record, $created_at, $changed_at);            
+            
+            while($stmt->fetch()){
+            
+	            $res= array();
+	            $res["id"] = $id;
+				$res["contractorid"] = $contractorid;
+	            $res["customerid"] = $customerid;
+	            $res["status"] = $status;
+				$res["record"] = $record;
+				
+				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
+				$res["created_at"] = $timestamp_object->getTimestamp();	
+				
+	            $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+				$res["changed_at"] = $timestamp_object->getTimestamp();	
+								
+	            $orders[]=$res;
+	        }			
+            $stmt->close();
+			
+        }
+		
+        return $orders;        
+    }
+	
+	public function getOrdersDeltaOfContractorAgent($contractorid, $userid, $timestamp) {
+	
+        $stmt = $this->conn->prepare("
+			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.created_at, o.changed_at 
+			FROM orders o 
+			INNER JOIN ( 
+				SELECT groupid 
+				FROM group_users 
+				WHERE ( ( userid = ? ) AND ( status = 8 ) ) 
+			) AS gu ON  ( o.customerid = gu.groupid ) 
+			WHERE ( (o.contractorid = ?) AND ( o.changed_at > ? ) ) ");
+		
+		$date_string=date('Y-m-d H:i:s',$timestamp);
+		
+        $stmt->bind_param( "iis", $userid,$contractorid,$date_string);
 		
 		
 		$orders=array();

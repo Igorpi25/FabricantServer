@@ -1027,7 +1027,7 @@ class DbHandlerProfile extends DbHandler{
 					group_users AS u 
 				INNER JOIN groups g ON u.groupid = g.id 
 				LEFT OUTER JOIN avatars a ON g.avatar = a.id 
-				WHERE ( ( u.userid = ? ) AND ((u.status=0)||(u.status=1)||(u.status=2)) ) 
+				WHERE ( ( u.userid = ? ) AND ((u.status=0)||(u.status=1)||(u.status=2)||(u.status=8)) ) 
 				GROUP BY u.groupid 
 				");
             
@@ -1361,7 +1361,7 @@ class DbHandlerProfile extends DbHandler{
      */
 	public function isUserInGroup($groupid,$userid) {
                     		
-            $stmt = $this->conn->prepare("SELECT r.id FROM group_users r WHERE ( r.groupid  = ? ) AND ( r.userid = ? ) AND ( (r.status=0) OR (r.status=1) OR (r.status=2) ) ");
+            $stmt = $this->conn->prepare("SELECT r.id FROM group_users r WHERE ( r.groupid  = ? ) AND ( r.userid = ? ) AND ( (r.status=0) OR (r.status=1) OR (r.status=2) OR (r.status=8) ) ");
             $stmt->bind_param("ii", $groupid,$userid);
             $stmt->execute();
             $stmt->store_result();
@@ -2334,7 +2334,7 @@ class DbHandlerProfile extends DbHandler{
 				FROM group_users u 
 				LEFT OUTER JOIN groups g ON u.groupid = g.id 
 				LEFT OUTER JOIN avatars a ON g.avatar = a.id  
-				WHERE ( ( u.userid = ? ) AND ( g.type = 1 ) AND ( g.changed_at > ? ) ) 
+				WHERE ( ( u.userid = ? ) AND ( g.type = 1 ) AND ( ( u.status = 0 ) OR ( u.status = 1 ) OR ( u.status = 2 ) OR ( u.status = 8 ) ) AND ( g.changed_at > ? ) ) 
 			");
 			$date_string=date('Y-m-d H:i:s',$timestamp);
 			$stmt->bind_param( "is", $userid, $date_string );

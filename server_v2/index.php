@@ -797,7 +797,7 @@ $app->post('/orders/create', 'authenticate', function () use ($app)  {
 		checkUserPermissionToGroups($order["contractorid"],$order["customerid"]);
 
 		$record=makeOrderRecord($order);
-		
+
 		//Customer user info to record
 		$customer_user=$db_profile->getUserById($user_id);
 		$record["customerUserId"]=$user_id;
@@ -839,14 +839,14 @@ $app->post('/orders/update', 'authenticate', function () use ($app)  {
 
 	// check for required params
     verifyRequiredParams(array('order','orderid'));
-	
+
 	$old_order_id = $app->request->post('orderid');
 	$json_order = json_decode($app->request->post('order'),true);
-	
+
 	global $user_id;
-	
+
 	$response=updateOrder($old_order_id,$json_order,$user_id);
-	
+
 	echoResponse(200, $response);
 	if($response["success"]==1){
 		//sendSMS("UpdateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
@@ -860,9 +860,9 @@ $app->post('/orders/accept', 'authenticate', function () use ($app)  {
     verifyRequiredParams(array('orderid'));
 
 	$orderid = $app->request->post('orderid');
-	
+
 	global $user_id;
-	
+
 	$response=acceptOrder($orderid,$user_id);
 
 	echoResponse(200, $response);
@@ -1155,6 +1155,36 @@ $app->post('/orders/create_minor', 'authenticate', function () use ($app)  {
 
 });
 
+$app->post('/orders/add_visa', 'authenticate', function () use ($app)  {
+
+	// check for required params
+    verifyRequiredParams(array('orderid'));
+
+	$orderid = $app->request->post('orderid');
+
+	global $user_id;
+
+	$response=addVisaToOrder($orderid,$user_id);
+
+	echoResponse(200, $response);
+
+});
+
+$app->post('/orders/remove_visa', 'authenticate', function () use ($app)  {
+
+	// check for required params
+    verifyRequiredParams(array('orderid'));
+
+	$orderid = $app->request->post('orderid');
+
+	global $user_id;
+
+	$response=removeVisaFromOrder($orderid,$user_id);
+
+	echoResponse(200, $response);
+
+});
+
 //-----------------1C Синхронизация------------------------------
 
 /**
@@ -1163,7 +1193,7 @@ $app->post('/orders/create_minor', 'authenticate', function () use ($app)  {
  * file - XLS файл с количеством товаров
  */
 $app->post('/orders/1c_order_pass', function() use ($app) {
-	
+
 	// array for final json response
 	$response = array();
 
@@ -1200,10 +1230,10 @@ $app->post('/orders/1c_order_pass', function() use ($app) {
 	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
 
 	global $api_key,$user_id;
-	
-	$api_key=$user["api_key"];	
+
+	$api_key=$user["api_key"];
 	$user_id=$user["id"];//Это нужно чтобы в функциях updateOrder и acceptOrder
-	
+
 
 	//try{
 
@@ -1245,8 +1275,8 @@ $app->post('/orders/1c_order_pass', function() use ($app) {
 		if(!$success){
 			throw new Exception('Failed when decoding the recieved file');
 		}
-		
-		
+
+
 		error_log("-------------1c_order_pass filename=".$filename."----------------");
 		error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."_orderid=".$orderid."|");
 
@@ -1266,9 +1296,9 @@ $app->post('/orders/1c_order_pass', function() use ($app) {
 		$nrColumns = ord($highestColumn) - 64;
 
 		$rows=array();
-		
+
 		error_log("Recieved xls file:");
-		
+
 		for ($rowIndex = 3; $rowIndex <= $highestRow; ++$rowIndex) {
 			$cells = array();
 
@@ -1282,7 +1312,7 @@ $app->post('/orders/1c_order_pass', function() use ($app) {
 			$string = iconv('utf-8', 'cp1252', $nomenclature);
 			$nomenclature = iconv('cp1251', 'utf-8', $string);
 
-			
+
 
 			$product=$db_fabricant->getProductByCode($contractorid,$code);
 
@@ -1305,32 +1335,32 @@ $app->post('/orders/1c_order_pass', function() use ($app) {
 				$row["count"]=$count;
 				$row["amount"]=$amount;
 			}
-			
-			
+
+
 			error_log(($rowIndex-2)."). productid=".$row["productid"]." price=".$row["price"]." count=".$row["count"]." amount=".$row["amount"]);
-			
+
 			$rows[]=$row;
 		}
 
 		$record=json_decode($order["record"],true);
 		$items=$record["items"];
-		
+
 		error_log("Existing order with orderid=".$orderid.":");
-		
+
 		foreach($items as $key=>$item){
 			error_log(($key+1)."). productid=".$item["productid"]." price=".$item["price"]." count=".$item["count"]." amount=".$item["amount"]);
 		}
 
 		$added_items=array_udiff($rows,$items,"order_item_id_compare");
 		$deleted_items=array_udiff($items,$rows,"order_item_id_compare");
-		
+
 		$rows_intersect=array_uintersect($rows,$items,"order_item_id_compare");
 		$items_intersect=array_uintersect($items,$rows,"order_item_id_compare");
-		
+
 		$changed_items=array_udiff($rows_intersect,$items_intersect,"order_item_id_price_count_compare");
-		
+
 		$update_flag=false;
-		
+
 		if(count($added_items)>0){
 			$update_flag=true;
 			error_log(count($added_items)." items added");
@@ -1360,37 +1390,37 @@ $app->post('/orders/1c_order_pass', function() use ($app) {
 		}else{
 			error_log("No items changed");
 		}
-		
+
 		if($update_flag){
 			$json_order=array();
 			$json_order["contractorid"]=$contractorid;
 			$json_order["customerid"]=$order["customerid"];
 			$json_order["phone"]=$record["phone"];
 			$json_order["comment"]=$record["comment"]." (Принят, с изменениями при проведении в 1С)";
-			
-			$json_order_items=array();			
+
+			$json_order_items=array();
 			foreach($rows as $row){
 				$json_order_items["".$row["productid"]]=$row["count"];
-			}			
+			}
 			$json_order["items"]=$json_order_items;
-			
+
 			error_log("updateOrder orderid=".$orderid." user_id=".$user_id);
-			
+
 			$result=updateOrder($orderid,$json_order,$user_id);
-			
+
 			if($result["success"]){
 				error_log("acceptOrder orderid=".$orderid." user_id=".$user_id);
-				$result=acceptOrder($orderid,$user_id);		
+				$result=acceptOrder($orderid,$user_id);
 				$response[]=$result["success"];
 			}else{
 				$response[]=0;
 			}
-		}else{			
+		}else{
 			error_log("acceptOrder orderid=".$orderid." user_id=".$user_id);
-			$result=acceptOrder($orderid,$user_id);		
+			$result=acceptOrder($orderid,$user_id);
 			$response[]=$result["success"];
 		}
-		
+
 		error_log(" ");
 
 
@@ -1406,7 +1436,7 @@ $app->post('/orders/1c_order_pass', function() use ($app) {
 
 function order_item_id_compare($a,$b){
   return (intval($a["productid"])-intval($b["productid"]));
-    
+
 }
 
 function order_item_id_price_count_compare($a,$b){
@@ -1420,9 +1450,9 @@ function order_item_id_price_count_compare($a,$b){
 //-------------Orders Utils------------------------
 
 function updateOrder($old_order_id,$order,$user_id) {
-	
+
 	//try{
-		
+
 		$db_profile = new DbHandlerProfile();
 		$db_fabricant = new DbHandlerFabricant();
 
@@ -1432,12 +1462,12 @@ function updateOrder($old_order_id,$order,$user_id) {
 		$old_order_record=json_decode($old_order["record"],JSON_UNESCAPED_UNICODE);
 
 		checkUserPermissionToOrder($old_order_id,$order);
-		
+
 		$record=makeOrderRecord($order);
 		$record["id"]=$old_order_id;
 		$record["created_at"]=$old_order_record["created_at"];
 		$record["updated"]=true;
-		
+
 		//Customer user info to record
 		$record["customerUserId"]=$old_order_record["customerUserId"];
 		$record["customerUserName"]=$old_order_record["customerUserName"];
@@ -1487,12 +1517,12 @@ function updateOrder($old_order_id,$order,$user_id) {
 	//	$response['message'] = $e->getMessage();
 	//	$response['success'] = 0;
 	//}
-	
+
 	return $response;
 }
 
 function acceptOrder($orderid,$user_id) {
-	
+
 	$db_profile = new DbHandlerProfile();
 	$db_fabricant = new DbHandlerFabricant();
 
@@ -1540,7 +1570,124 @@ function acceptOrder($orderid,$user_id) {
 		$response['message'] = $e->getMessage();
 		$response['success'] = 0;
 	}
-	
+
+	return  $response;
+}
+
+function addVisaToOrder($orderid,$user_id) {
+
+	$db_profile = new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+
+	$response = array();
+
+	try{
+
+		$order=$db_fabricant->getOrderById($orderid);
+		$record=json_decode($order["record"],true);
+		$user=$db_profile->getUserById($user_id);
+		
+		//Права на установку визы
+		checkVisaPermission($order["contractorid"],$order["customerid"]);
+		
+		//Не стоит ли виза уже
+		if(isset($record["visa"])&&($record["visa"]==true)){
+			throw new Exception("Visa already added");
+		}
+		
+		//Правильный ли статус заказа для того чтобы ставить визу
+		if($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING){
+			throw new Exception('Order status is not correct to add visa');
+		}
+
+		
+
+		$record["visaAddedUserId"]=$user_id;
+		$record["visaAddedUserName"]=$user["name"];
+		$record["visaAddedTimestamp"]=time();
+		$record["visa"]=true;
+
+		//Console command
+		$json_header=array();
+		$json_header["console"]="v2/index/orders/add_visa";
+		$json_header["operation"]=M_CONSOLE_OPERATION_ORDER;
+		$json_header["order_operationid"]=M_ORDEROPERATION_UPDATE;
+		$json_header["senderid"]=$user_id;
+		$json_header["record"]=json_encode($record,JSON_UNESCAPED_UNICODE);
+		$console_response=consoleCommand($json_header);
+
+		$response['consoleCommand_add_visa'] = $console_response["message"];
+
+		$response['error'] = false;
+		$response['message'] = "Visa has been added";
+		$response['order'] = $db_fabricant->getOrderById($orderid);
+		$response['success'] = 1;
+
+	} catch (Exception $e) {
+
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+	}
+
+	return  $response;
+}
+
+function removeVisaFromOrder($orderid,$user_id) {
+
+	$db_profile = new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+
+	$response = array();
+
+	try{
+
+		$order=$db_fabricant->getOrderById($orderid);
+		$record=json_decode($order["record"],true);
+		$user=$db_profile->getUserById($user_id);
+
+		//Права на установку визы
+		checkVisaPermission($order["contractorid"],$order["customerid"]);
+		
+		//Если виза еще не стоит
+		if((!isset($record["visa"]))||($record["visa"]==false)){
+			throw new Exception("Visa is not added yet");
+		}
+		
+		//Правильный ли статус заказа для того чтобы ставить визу
+		if($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING){
+			throw new Exception('Order status is not correct to remove visa');
+		}
+
+		
+		$record["visaRemovedUserId"]=$user_id;
+		$record["visaRemovedUserName"]=$user["name"];
+		$record["visaRemovedTimestamp"]=time();
+		$record["visa"]=false;
+
+		//Console command
+		$json_header=array();
+		$json_header["console"]="v2/index/orders/remove_visa";
+		$json_header["operation"]=M_CONSOLE_OPERATION_ORDER;
+		$json_header["order_operationid"]=M_ORDEROPERATION_UPDATE;
+		$json_header["senderid"]=$user_id;
+		$json_header["record"]=json_encode($record,JSON_UNESCAPED_UNICODE);
+		$console_response=consoleCommand($json_header);
+
+		$response['consoleCommand_remove_visa'] = $console_response["message"];
+
+		$response['error'] = false;
+		$response['message'] = "Visa has been removed";
+		$response['order'] = $db_fabricant->getOrderById($orderid);
+		$response['success'] = 1;
+
+	} catch (Exception $e) {
+
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+	}
+
 	return  $response;
 }
 
@@ -1574,15 +1721,7 @@ function makeOrderRecord($order){
 		}
 
 		//Check is user in contractor group. Contractor can create order to any customer
-		$user_status_in_contractor=$db_profile->getUserStatusInGroup($contractorid,$user_id);
-		if( ($user_status_in_contractor!=0)&&($user_status_in_contractor!=1)&&($user_status_in_contractor!=2) ){
-			//Check is user in customer group
-			$user_status_in_customer=$db_profile->getUserStatusInGroup($customerid,$user_id);
-			if( ($user_status_in_customer!=0)&&($user_status_in_customer!=1)&&($user_status_in_customer!=2) ){
-
-				throw new Exception('User have no permission to create order');
-			}
-		}
+		checkUserPermissionToGroups($contractorid,$customerid);
 
 
 		//Installment
@@ -1758,7 +1897,8 @@ function makeOrderRecord($order){
 		if(isset($order["comment"])){
 			$record["comment"]=$order["comment"];
 		}
-
+		
+		
 		return $record;
 }
 
@@ -1774,8 +1914,11 @@ function checkUserPermissionToGroups($contractorid,$customerid){
 
 			$user_status_in_customer=$db_profile->getUserStatusInGroup($customerid,$user_id);
 
-			if(($user_status_in_customer!=1)&&($user_status_in_customer!=2)&&($user_status_in_customer!=0)){
-				throw new Exception('User have no permission');
+			if(($user_status_in_customer!=0)&&($user_status_in_customer!=1)&&($user_status_in_customer!=2)){
+
+				if(($user_status_in_customer!=8)||($user_status_in_contractor!=8)){
+					throw new Exception('User have no permission');
+				}
 			}
 		}
 
@@ -1801,16 +1944,7 @@ function checkUserPermissionToOrder($old_order_id,$new_order){
 		$contractorid=$order["contractorid"];
 		$customerid=$order["customerid"];
 
-		$user_status_in_contractor=$db_profile->getUserStatusInGroup($contractorid,$user_id);
-
-		if(($user_status_in_contractor!=1)&&($user_status_in_contractor!=2)){
-
-			$user_status_in_customer=$db_profile->getUserStatusInGroup($customerid,$user_id);
-
-			if(($user_status_in_customer!=1)&&($user_status_in_customer!=2)&&($user_status_in_customer!=0)){
-				throw new Exception('User have no permission');
-			}
-		}
+		checkUserPermissionToGroups($contractorid,$customerid);
 
 		if( ($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING)&&($order["status"]!=$db_fabricant::STATUS_ORDER_CONFIRMED)&&($order["status"]!=$db_fabricant::STATUS_ORDER_ONWAY)&&($order["status"]!=$db_fabricant::STATUS_ORDER_CANCELED) ){
 			throw new Exception('Order status is not correct for this operation');
@@ -1820,6 +1954,28 @@ function checkUserPermissionToOrder($old_order_id,$new_order){
 			throw new Exception('contractorid can not be changed');
 		}
 
+}
+
+function checkVisaPermission($contractorid,$customerid) {
+	//Используется для зафиксирования заказа. Например, дать понять поставщику, что заказ одобрен агентом
+	//Визу может ставить Агент или админ поставщика
+	
+	$db_profile = new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+
+	global $user_id;
+
+	$user_status_in_contractor=$db_profile->getUserStatusInGroup($contractorid,$user_id);
+	$user_status_in_customer=$db_profile->getUserStatusInGroup($customerid,$user_id);
+	
+	//Если админ в группе поставщика, либо агент в поставщике и одновременно агент или админ в группе заказчика. Иначе выброс исключения
+	if(!(
+		( ($user_status_in_contractor==1)||($user_status_in_contractor==2) ) ||
+		( ($user_status_in_contractor==8)&&(($user_status_in_customer==1)||($user_status_in_customer==2)||($user_status_in_customer==8)) )
+	)){
+		throw new Exception('No permission to visa');
+	}
+	
 }
 
 function getProductPriceInstallmentValue($price_name,$product){
@@ -2443,6 +2599,8 @@ define("M_ORDEROPERATION_REMOVE", 3);
 define("M_ORDEROPERATION_TRANSFER", 4);
 define("M_ORDEROPERATION_MAKE_PAID", 5);
 define("M_ORDEROPERATION_HIDE", 6);
+define("M_ORDEROPERATION_ADD_VISA", 7);
+define("M_ORDEROPERATION_REMOVE_VISA", 8);
 
 define("M_SALE_OPERATION_CREATE", 0);
 define("M_SALE_OPERATION_REMOVE", 1);
@@ -2500,7 +2658,7 @@ function permissionFabricantAdmin($userid){
 	$response["message"] = "You have no permission. Only fabricant admin has permission";
 	$response["success"] = 0;
 	echoResponse(200, $response);
-	
+
 	global $app;
 	$app->stop();
 }
@@ -2517,7 +2675,7 @@ function permissionInGroup($userid,$groupid,$db_profile){
 	$response["message"] = "You have no permission. Only user in group has permission";
 	$response["success"] = 0;
 	echoResponse(200, $response);
-	
+
 	global $app;
 	$app->stop();
 }
@@ -2534,8 +2692,8 @@ function permissionAdminInGroup($userid,$groupid,$db_profile){
 	$response["message"] = "You have no permission. Only group admin has permission";
 	$response["success"] = 0;
 	echoResponse(200, $response);
-	
-	global $app;	
+
+	global $app;
 	$app->stop();
 }
 
@@ -2551,7 +2709,7 @@ function permissionSuperAdminInGroup($userid,$groupid,$db_profile){
 	$response["message"] = "You have no permission. Only group super admin has permission";
 	$response["success"] = 0;
 	echoResponse(200, $response);
-	
+
 	global $app;
 	$app->stop();
 }

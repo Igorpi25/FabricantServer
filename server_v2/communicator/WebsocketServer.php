@@ -77,6 +77,7 @@ define("GROUPSTATUS_MISSING", 4);
 define("GROUPSTATUS_LEAVE", 5);
 define("GROUPSTATUS_REMOVED", 6);
 define("GROUPSTATUS_NOT_IN_GROUP", 7);
+define("GROUPSTATUS_AGENT", 8);
 
 //Это на самом деле типы, надо потом исправить
 define("GROUP_STATUS_DEFAULT", 0);
@@ -684,10 +685,26 @@ protected function outgoingOrdersDelta($connect,$timestamp){
 		
 		$orders=null;
 		
-		if( ($group["type"]==0) && (($group["status_in_group"]==1)||($group["status_in_group"]==2)) ){			
-			$orders=$this->db_fabricant->getOrdersDeltaOfContractor($group["id"],$timestamp);	
-		}else if($group["type"]==1){			
-			$orders=$this->db_fabricant->getOrdersDeltaOfCustomer($group["id"],$timestamp);			
+		
+		if( ($group["type"]==0) ){
+			//Контрактор
+			
+			if( ($group["status_in_group"]==1)||($group["status_in_group"]==2) ){
+				//Если статус в группе админ или супер-админ
+				$orders=$this->db_fabricant->getOrdersDeltaOfContractor($group["id"],$timestamp);	
+			}else if( $group["status_in_group"]==8) {
+				//Если статус в группе агент, получаем только свои заказы
+				$orders=$this->db_fabricant->getOrdersDeltaOfContractorAgent($group["id"],$userid,$timestamp);	
+			}
+			
+		}else if($group["type"]==1){	
+			//Заказчик
+			
+			//Только обычный, админ, супер админ могут получать все заказы группы
+			//Агенты не получают, потому-что получат этот же заказ в дельте контрактора куда они входят
+			if( ($group["status_in_group"]==0)||($group["status_in_group"]==1)||($group["status_in_group"]==2) ){
+				$orders=$this->db_fabricant->getOrdersDeltaOfCustomer($group["id"],$timestamp);			
+			}
 		}
 		
 		if(isset($orders)&&(count($orders)>0)){
@@ -702,15 +719,28 @@ protected function outgoingOrdersDelta($connect,$timestamp){
 	   
 }
 
-protected function outgoingNotifyOrderToGroup($order,$groupid){
+protected function outgoingNotifyOrderToCustomer($order,$groupid){
 	
 	//Get users list of group
     $users = $this->db_profile->getUsersInGroup($groupid);
  		
-	$this->log("<<outgoingNotifyOrderToGroup orderid=".$order["id"]." groupid=".$groupid." :");
+	$this->log("<<outgoingNotifyOrderToCustomer orderid=".$order["id"]." groupid=".$groupid." :");
 	
 	foreach($users as $user) {
 		$user_id=$user["userid"];
+		$status_in_customer = $user["status_in_group"];
+		
+		//Если пользователь более не состоит в группе, то пропускаем его
+		if(($status_in_customer!=0)&&($status_in_customer!=1)&&($status_in_customer!=2)&&($status_in_customer!=8))continue;
+		
+		//Агенты должны получать только заказы своих поставщиков
+		if(($status_in_customer==8)){
+			$status_in_contractor=$this->db_profile->getUserStatusInGroup($order["contractorid"],$user_id);
+			
+			//Если агент не состоит в группе поставщика для этого заказа, то пропускаем его
+			if(($status_in_contractor!=1)&&($status_in_contractor!=2)&&($status_in_contractor!=8))continue;
+		}
+		
 		//If user connected then notify him
 		if( array_key_exists(strval($user_id), $this->map_userid_connect) ){
 			$connect=$this->getConnectByUserId($user_id);
@@ -723,11 +753,11 @@ protected function outgoingNotifyOrderToGroup($order,$groupid){
 	
 }
 
-protected function outgoingNotifyOrderToGroupById($orderid,$groupid){
+protected function outgoingNotifyOrderToCustomerById($orderid,$groupid){
 	
 	$order=$this->db_fabricant->getOrderById($orderid);
 	
-	$this->outgoingNotifyOrderToGroup($order,$groupid);
+	$this->outgoingNotifyOrderToCustomer($order,$groupid);
 }
 
 protected function outgoingNotifyContractorProductsDelta($contractorid,$timestamp){
@@ -934,6 +964,11 @@ protected function outgoingNotifyGroupmates($groupid,$userid){
 	
 	foreach($groupmates as $groupmate) {
 		$groupmate_id=$groupmate["userid"];
+		$status_in_group=$groupmate["status_in_group"];
+		
+		//Уведомляем только тех кто состоит в группе, удаленных не уведомляем
+		if(($status_in_group!=0)&&($status_in_group!=1)&&($status_in_group!=2)&&($status_in_group!=8))continue;
+		
 		if( array_key_exists(strval($groupmate_id), $this->map_userid_connect) ){
 			$groupmate_connect=$this->getConnectByUserId($groupmate_id);				
 			$this->outgoingOneUser($groupmate_connect,$userid);
@@ -1089,6 +1124,11 @@ protected function outgoingNotifyGroupChanged($groupid){
 		$this->log("<<outgoingNotifyGroupChanged groupid=".$groupid." :");	
 		foreach($users as $user) {
 			$user_id=$user["userid"];
+			$status_in_group=$user["status_in_group"];
+			
+			//Уведомляем только тех кто состоит в группе, удаленных не уведомляем
+			if(($status_in_group!=0)&&($status_in_group!=1)&&($status_in_group!=2)&&($status_in_group!=8))continue;
+			
 			//If user connected then notify him
 			if( array_key_exists(strval($user_id), $this->map_userid_connect) ){
 				$connect=$this->getConnectByUserId($user_id);
@@ -1121,7 +1161,8 @@ protected function outgoingNotifyGroupUsersChanged($groupid,$changed_users){
 	
 	foreach($users as $user) {
 		$user_id=$user["userid"];
-		//If user connected then notify him
+		
+		//If user connected then notify him		
 		if( array_key_exists(strval($user_id), $this->map_userid_connect) ){
 			$connect=$this->getConnectByUserId($user_id);
 			
@@ -1253,7 +1294,7 @@ protected function groupOperationSave($senderid,$groupid,$json){
 	
 }
 
-protected function groupOperationCreate($senderid){	
+protected function groupOperationCreate($senderid){
 		    
 	$groupid=$this->db_profile->createGroup($senderid);	
 	
@@ -1278,25 +1319,59 @@ protected function groupOperationUserStatus($senderid,$userid,$groupid,$status){
 	
 	switch($status){
 		case GROUPSTATUS_LEAVE :
-			if( (($sender_status==0)||($sender_status==1)||($sender_status==2)) &&($senderid==$userid) ){
+			if( (($sender_status==0)||($sender_status==1)||($sender_status==2)||($sender_status==8)) &&($senderid==$userid) ){
 				$count=$this->db_profile->changeUserStatusInGroup($groupid,$userid,$status);
 			}
 		break;
 		
 		case GROUPSTATUS_REMOVED :
-			if( (($sender_status==1)||($sender_status==2)) && ($senderid!=$userid) && (($user_status==0)||($user_status==2)) ){
+			if( (($sender_status==1)||($sender_status==2)) && ($senderid!=$userid) && (($user_status==0)||($user_status==2)||($user_status==8)) ){
 				$count=$this->db_profile->changeUserStatusInGroup($groupid,$userid,$status);
 			}
 		break;
 		
+		//Передача статуса суперадмин. При этом сам становится обычным админом
+		case GROUPSTATUS_ADMIN_CREATER :
+			if( ($sender_status==1) && ($senderid!=$userid) && (($user_status==0)||($user_status==2)||($user_status==8)) ){
+				$this->db_profile->changeUserStatusInGroup($groupid,$userid,GROUPSTATUS_ADMIN_CREATER);
+				$this->db_profile->changeUserStatusInGroup($groupid,$senderid,GROUPSTATUS_ADMIN);
+				
+				$this->log("groupOperationUserStatus. transfer_superadmin. senderid=".$senderid." userid=".$userid." groupid=".$groupid);
+					
+				$changed_users= json_decode('
+					[
+						{"userid":'.$userid.', "groupid":'.$groupid.', "status_in_group":'.GROUPSTATUS_ADMIN_CREATER.', "changed_at": '.time().'},
+						{"userid":'.$senderid.', "groupid":'.$groupid.', "status_in_group":'.GROUPSTATUS_ADMIN.', "changed_at": '.time().'}
+					]
+				',true);	
+				
+				$this->outgoingNotifyGroupUsersChanged($groupid,$changed_users);
+				
+			}
+		break;
+		
 		case GROUPSTATUS_ADMIN :
-			if( (($sender_status==1)||($sender_status==2)) && ($senderid!=$userid) && (($user_status==0)) ){
+			if( (($sender_status==1)||($sender_status==2)) && ($senderid!=$userid) && (($user_status==0)||($user_status==8)) ){
 				$count=$this->db_profile->changeUserStatusInGroup($groupid,$userid,$status);
 			}
 		break;
 		
 		case GROUPSTATUS_COMMON_USER :
-			if( (($sender_status==1)||($sender_status==2)) && ($senderid!=$userid) && (($user_status==2)) ){
+			if( 
+				( (($sender_status==1)||($sender_status==2)) && ($senderid!=$userid) && (($user_status==2)||($user_status==8)) ) ||
+				( (($sender_status==1)||($sender_status==2)||($sender_status==8)) && ($senderid==$userid) )			
+			){
+				$count=$this->db_profile->changeUserStatusInGroup($groupid,$userid,$status);
+			}
+		break;
+		
+		case GROUPSTATUS_AGENT :
+			
+			//Если отправитель супер-админ, то он не может стать агентом
+			if( 
+				( (($sender_status==1)||($sender_status==2)) && ($senderid!=$userid) && (($user_status==0)||($user_status==2)) ) ||
+				( ($sender_status==1) && ($senderid==$userid) ) 					
+			) {
 				$count=$this->db_profile->changeUserStatusInGroup($groupid,$userid,$status);
 			}
 		break;
@@ -1546,7 +1621,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 				
 				case ORDEROPERATION_CREATE :
 					$orderid=$this->db_fabricant->createOrder($record);					
-					$this->outgoingNotifyOrderToGroupById($orderid,$record["customerid"]);
+					$this->outgoingNotifyOrderToCustomerById($orderid,$record["customerid"]);
 					
 					//Response to console client					
 					$response = array();
@@ -1559,7 +1634,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 				case ORDEROPERATION_UPDATE :
 								
 					$this->db_fabricant->updateOrder($record);
-					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					$this->outgoingNotifyOrderToCustomerById($record["id"],$record["customerid"]);
 					
 					//Response to console client					
 					$response = array();
@@ -1570,7 +1645,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 				
 				case ORDEROPERATION_ACCEPT :
 					$this->db_fabricant->acceptOrder($record);
-					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					$this->outgoingNotifyOrderToCustomerById($record["id"],$record["customerid"]);
 					
 					//Response to console client					
 					$response = array();
@@ -1581,7 +1656,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 				
 				case ORDEROPERATION_REMOVE :
 					$this->db_fabricant->removeOrder($record);
-					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					$this->outgoingNotifyOrderToCustomerById($record["id"],$record["customerid"]);
 					
 					//Response to console client					
 					$response = array();
@@ -1593,7 +1668,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 				case ORDEROPERATION_TRANSFER :
 									
 					$this->db_fabricant->transferOrder($record);
-					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					$this->outgoingNotifyOrderToCustomerById($record["id"],$record["customerid"]);
 					
 					//Response to console client					
 					$response = array();
@@ -1604,7 +1679,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 				
 				case ORDEROPERATION_MAKE_PAID :
 					$this->db_fabricant->makeOrderPaid($record);
-					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					$this->outgoingNotifyOrderToCustomerById($record["id"],$record["customerid"]);
 					
 					//Response to console client					
 					$response = array();
@@ -1615,7 +1690,7 @@ protected function ProcessConsoleOperation($connect,$info) {
 				
 				case ORDEROPERATION_HIDE :
 					$this->db_fabricant->hideOrder($record);
-					$this->outgoingNotifyOrderToGroupById($record["id"],$record["customerid"]);
+					$this->outgoingNotifyOrderToCustomerById($record["id"],$record["customerid"]);
 					
 					//Response to console client					
 					$response = array();
