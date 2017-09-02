@@ -1283,9 +1283,21 @@ protected function groupOperationSave($senderid,$groupid,$json){
 		$groups=$this->db_profile->getGroupById($groupid);		
 		$json_info=json_decode($groups[0]["info"],true);
 		$json_info["name_full"]["text"]=$name_full;		
-		$this->db_profile->changeGroupInfo(json_encode($json_info,JSON_UNESCAPED_UNICODE),$groupid);	
 		
 		$this->db_profile->changeGroupInfo(json_encode($json_info,JSON_UNESCAPED_UNICODE),$groupid);	
+		
+	}
+	
+	if(isset($json["quadrature"])){
+		$quadrature = $json["quadrature"];
+		
+		$groups=$this->db_profile->getGroupById($groupid);		
+		if(sizeof($groups)!=1)return;		
+		$groups=$this->db_profile->getGroupById($groupid);		
+		$json_info=json_decode($groups[0]["info"],true);
+		$json_info["quadrature"]=$quadrature;		
+		$this->db_profile->changeGroupInfo(json_encode($json_info,JSON_UNESCAPED_UNICODE),$groupid);	
+		
 	}
 	
 	$this->log("groupOperationSave. Group saved. groupid=".$groupid);
