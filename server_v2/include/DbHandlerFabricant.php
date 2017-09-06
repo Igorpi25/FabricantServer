@@ -678,6 +678,76 @@ class DbHandlerFabricant extends DbHandler{
 		return $result;
 	}
 	
+	public function updateOrderCode($id, $code) {
+		// update query
+		$stmt = $this->conn->prepare("UPDATE `orders` SET `code1c`= ? , `changed_at`=CURRENT_TIMESTAMP() WHERE `id`=?");
+		$stmt->bind_param("si", $code, $id);
+		$result = $stmt->execute();
+		$stmt->close();
+		return $result;
+	}
+
+	public function getOrderCodeById($id) {
+
+		$stmt = $this->conn->prepare("SELECT `code1c` FROM `orders` WHERE `id`=?");
+		$stmt->bind_param("i", $id);
+		if ($stmt->execute()) {
+			$stmt->store_result();
+			if($stmt->num_rows==0)return NULL;
+
+			$stmt->bind_result($code1c);
+			$stmt->fetch();
+			$res=$code1c;
+			$stmt->close();
+			return $res;
+		} else {
+			return NULL;
+		}
+	}
+
+	public function getOrderById($code) {
+	
+		$stmt = $this->conn->prepare("
+			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.code1c, o.created_at, o.changed_at 
+			FROM orders o 
+			WHERE ( o.code1c = ? ) ");
+		
+		$stmt->bind_param( "s", $code);
+		
+		$orders=array();
+		
+		if ($stmt->execute()) {
+			$stmt->store_result();
+			if($stmt->num_rows==0)return NULL;
+			
+			$stmt->bind_result($id,$contractorid,$customerid, $status, $record, $code1c, $created_at, $changed_at);            
+
+			$stmt->fetch();
+
+			$res= array();
+			$res["id"] = $id;
+			$res["contractorid"] = $contractorid;
+			$res["customerid"] = $customerid;
+			$res["status"] = $status;
+			$res["record"] = $record;
+			$res["code1c"] = $code1c;
+			
+			$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
+			$res["created_at"] = $timestamp_object->getTimestamp();	
+			
+			$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+			$res["changed_at"] = $timestamp_object->getTimestamp();	
+			
+			$orders[]=$res;
+
+			$stmt->close();
+			
+			return $res;			
+		}else {
+			return NULL;
+		}
+	}
+		
 	//-------------------OrderOperations-----------------------
 	
 	public function addOrderOperation($orderid,$contractorid,$customerid,$type,$record,$comment){
