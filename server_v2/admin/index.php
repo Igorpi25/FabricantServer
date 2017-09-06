@@ -37,7 +37,7 @@ $app->get('/hello/:name', function ($name) {
 function echoResponse($status_code, $response) {
 	$app = \Slim\Slim::getInstance();
 	// Http response code
-	$app->status($status_code);
+	$app->status($status_code); 
 
 	// setting response content type to json
 	$app->contentType('application/json');
@@ -180,17 +180,15 @@ $app->post('/login', function() use ($app) {
  * method POST
  * url /users/all
  */
-$app->post('/users/all/dt', 'authenticate', function() use ($app) {
+$app->post('/users/all', 'authenticate', function() use ($app) {
 
 	global $user_id;
 
 	$db = new DbHandlerProfile();
 	$users = $db->getAllUsersForMonitor();
 	$response = array();
-	if ($users != NULL || empty($users)) {
-		$response["draw"] = intval(1);
-		$response["recordsTotal"] = intval(count($users));
-		$response["recordsFiltered"] = intval(count($users));
+	if (isset($users)) {
+		$response["error"] = false;
 		$response["data"] = $users;
 	}
 	else {
@@ -407,7 +405,26 @@ $app->post('/groups/removeuser', 'authenticate', function() use ($app) {
 });
 
 //--------------------Products----------------------------
-
+/**
+ * Listing all products (POST method, datatables)
+ * method POST
+ * url /products/all
+ */
+$app->post('/products/all', 'authenticate', function() use ($app) {
+	// listing all products
+	$fdb = new DbHandlerFabricant();
+	$result = $fdb->getAllProducts;
+	$response = array();
+	if (isset($result)) {
+		$response["error"] = false;
+		$response["data"] = $result;
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to get products of contractor. Please try again";
+	}
+	echoResponse(200, $response);
+});
 /**
  * Listing all products of contractor (POST method, datatables)
  * method POST
@@ -652,12 +669,13 @@ $app->post('/products/code1c/update', 'authenticate', function() use ($app) {
  * method POST
  * url /contractors/customers/dt/:id
  */
-$app->post('/contractors/customers/dt/:contractorid', 'authenticate', function($contractorid) use ($app) {
+$app->post('/contractors/customers/:contractorid', 'authenticate', function($contractorid) use ($app) {
 	// listing all customers
 	$db = new DbHandlerProfile();
 	$groups = $db->getContractorCustomers($contractorid);
 	$response = array();
-	if ($groups != NULL || empty($groups)) {
+	if (isset($groups)) {
+		$response["error"] = false;
 		$response["draw"] = intval(1);
 		$response["recordsTotal"] = intval(count($groups));
 		$response["recordsFiltered"] = intval(count($groups));
@@ -715,16 +733,14 @@ $app->get('/contractors', 'authenticate', function() use ($app) {
  * method POST
  * url /contractors
  */
-$app->post('/contractors/all/dt', 'authenticate', function() use ($app) {
+$app->post('/contractors/all', 'authenticate', function() use ($app) {
 	// listing all contractor
 	$db = new DbHandlerProfile();
 	$type = 0;
 	$result = $db->getAllGroupsWeb($type);
 	$response = array();
-	if ($result != NULL || empty($result)) {
-		$response["draw"] = intval(1);
-		$response["recordsTotal"] = intval(count($result));
-		$response["recordsFiltered"] = intval(count($result));
+	if (isset($result)) {
+		$response["error"] = false;
 		$response["data"] = $result;
 	}
 	else {
@@ -992,13 +1008,13 @@ $app->get('/customers', function() use ($app) {
  * method GET
  * url /customers
  */
-$app->post('/customers/all/dt', function() use ($app) {
+$app->post('/customers/all', function() use ($app) {
 	// listing all customers
 	$db = new DbHandlerProfile();
 	$type = 1;
 	$result = $db->getAllGroupsWeb($type);
 	$response = array();
-	if ($result != NULL || empty($result)) {
+	if (isset($result)) {
 		$response["draw"] = intval(1);
 		$response["recordsTotal"] = intval(count($result));
 		$response["recordsFiltered"] = intval(count($result));
@@ -1284,7 +1300,12 @@ $app->post('/customers/remove/:id',  'authenticate', function($id) use ($app) {
  */
 $app->get('/orders/notify/:id', 'authenticate', function($id) use ($app) {
 	$db = new DbHandlerFabricant();
-	$result = $db->newOrderNotify($id);
+	if ($id == 0) {
+		$result = $db->newOrderNotifyAll();
+	} else {
+		$result = $db->newOrderNotify($id);
+	}
+	
 	$response = array();
 	if ($result) {
 		$response["error"] = false;
@@ -1297,19 +1318,80 @@ $app->get('/orders/notify/:id', 'authenticate', function($id) use ($app) {
 	echoResponse(200, $response);
 });
 /**
- * Listing all orders
+ * Listing all orders of cuntractor
  * method POST
  * url /orders/dt/:contractorid
  */
-$app->post('/orders/dt/:contractorid', 'authenticate', function($contractorid) use ($app) {
+$app->post('/orders/contractor/:contractorid', 'authenticate', function($contractorid) use ($app) {
 	// listing all orders
 	$db = new DbHandlerFabricant();
 	$result = $db->getAllOrdersOfContractorWeb($contractorid);
 	$response = array();
-	if ($result != NULL || empty($result)) {
-		$response["draw"] = intval(1);
-		$response["recordsTotal"] = intval(10);
-		$response["recordsFiltered"] = intval(10);
+	if (isset($result)) {
+		$response["error"] = false;
+		$response["ordersOfContractors"]="asdasd";
+		$response["data"] = $result;
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to get orders list. Please try again";
+	}
+	echoResponse(200, $response);
+});
+/**
+ * Listing all orders of cuntractor in range
+ * method POST
+ * url /orders/contractor/interval/:contractorid
+ */
+$app->post('/orders/contractor/interval/:contractorid', 'authenticate', function($contractorid) use ($app) {
+	// listing all orders
+	$db = new DbHandlerFabricant();
+	$interval = 7;
+	$result = $db->getAllOrdersOfContractorIntervalWeb($contractorid, $interval);
+	$response = array();
+	if (isset($result)) {
+		$response["error"] = false;
+		$response["data"] = $result;
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to get orders list. Please try again";
+	}
+	echoResponse(200, $response);
+});
+/**
+ * Listing all orders of customer
+ * method POST
+ * url /orders/customer/:customerid
+ */
+$app->post('/orders/customer/:customerid', 'authenticate', function($customerid) use ($app) {
+	// listing all orders
+	$db = new DbHandlerFabricant();
+	$result = $db->getAllOrdersOfCustomerWeb($customerid);
+	$response = array();
+	if (isset($result)) {
+		$response["error"] = false;
+		$response["data"] = $result;
+	}
+	else {
+		$response["error"] = true;
+		$response["message"] = "Failed to get orders list. Please try again";
+	}
+	echoResponse(200, $response);
+});
+/**
+ * Listing all orders
+ * method POST
+ * url /orders/all
+ */
+$app->post('/orders/all/groups', 'authenticate', function() use ($app) {
+	// listing all orders
+	$db = new DbHandlerFabricant();
+	$interval = 7;
+	$result = $db->getAllOrdersWeb($interval);
+	$response = array();
+	if (isset($result)) {
+		$response["error"] = false;
 		$response["data"] = $result;
 	}
 	else {
@@ -2442,6 +2524,433 @@ $app->post('/1c_products_report', function() use ($app) {
 	$objWriter->save('php://output');
 
 });
+
+/**
+ * Получает остатки товаров и высталяет наличие или не-наличие
+ * method POST
+ */
+$app->post('/1c_products_kustuk', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+
+	error_log("-------------1c_products_kustuk".$_FILES["xls"]["name"]."----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
+
+	$db_profile=new DbHandlerProfile();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+
+
+		$count_of_changed_products=0;
+		$count_of_products=0;
+		$count_of_unknown_products=0;
+
+	//try{
+
+		if (!isset($_FILES["xls"])) {
+			throw new Exception('Param xls is missing');
+		}
+		// Check if the file is missing
+		if (!isset($_FILES["xls"]["name"])) {
+			throw new Exception('Property name of xls param is missing');
+		}
+		// Check the file size >100MB
+		if($_FILES["xls"]["size"] > 100*1024*1024) {
+			throw new Exception('File is too big');
+		}
+
+		$tmpFile = $_FILES["xls"]["tmp_name"];
+
+		$filename = date('dmY').'-'.uniqid('1c_products_kustuk-').".xls";
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+
+		//Считываем закодированный файл xls в строку
+		$data = file_get_contents($tmpFile);
+		//Декодируем строку из base64 в нормальный вид
+		$data = base64_decode($data);
+
+		//Теперь нормальную строку сохраняем в файл
+		$success=false;
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+            @fwrite($fp, $data);
+            @fclose($fp);
+			$success=true;
+        }
+        //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+		unset($data);
+
+		//ошибка декодинга
+		if(!$success){
+			throw new Exception('Failed when decoding the recieved file');
+		}
+
+		// Подключаем класс для работы с excel
+		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+		// Подключаем класс для вывода данных в формате excel
+		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
+
+		$objPHPExcel = PHPExcel_IOFactory::load($path);
+		// Set and get active sheet
+		$objPHPExcel->setActiveSheetIndex(0);
+		$worksheet = $objPHPExcel->getActiveSheet();
+		$worksheetTitle = $worksheet->getTitle();
+		$highestRow = $worksheet->getHighestRow();
+		$highestColumn = $worksheet->getHighestColumn();
+		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+		$nrColumns = ord($highestColumn) - 64;
+
+
+		$db_fabricant = new DbHandlerFabricant();
+
+		
+
+		$products=array();
+
+		for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
+			$cells = array();
+
+			$count_of_products++;
+
+			for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
+				$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
+				$cells[] = $cell->getValue();
+			}
+
+			$code=$cells[0];
+			$nomenclature=$cells[1];
+			$full_name=$cells[2];
+			$price=$cells[3];
+			$article=$cells[4];
+			$units=$cells[5];
+			
+			error_log($count_of_products.". code=".$code." price=".$price." article=".$article." units=".$units);
+
+		}
+		error_log(" ");
+
+		if($count_of_products>0){
+			error_log("count_of_products=$count_of_products");
+			$response["all"] = $count_of_products;
+		}
+
+
+	//} catch (Exception $e) {
+		// Exception occurred. Make error flag true
+		//$response["error"] = true;
+		//$response["message"] = $e->getMessage();
+		//$response["success"] = 0;
+		//$response = $e->getMessage();
+	//}
+		$response["error"] = false;
+		$response["message"] = "count_of_products=".$count_of_products;
+		$response["success"] = 0;
+		
+		echoResponse(200, $response);
+});
+
+/**
+ * Возвращает дельту заказов (новые, измененные)
+ * method POST
+ */
+$app->post('/1c_orders_kustuk', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'/*,"last_timestamp"*/));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+	//$last_timestamp = $app->request->post('last_timestamp');
+	
+	//Формируем timestamp для последних 3-х дней
+	$date = date("M-d-Y", mktime(0, 0, 0, date('m'), date('d') - 3, date('Y')));
+	$last_timestamp=strtotime($date);
+
+	error_log("-------------1c_orders_kustuk----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."_lasttimestamp=".$last_timestamp."|");
+
+	
+
+	$db_profile=new DbHandlerProfile();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	//Проверяем доступ к группе
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+
+	$db_fabricant=new DbHandlerFabricant();
+	$orders=$db_fabricant->getOrdersDeltaOfContractor($contractorid,$last_timestamp);
+
+	// Подключаем класс для работы с excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+	// Подключаем класс для вывода данных в формате excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/Writer/Excel5.php';
+
+	// New PHPExcel class
+	$xls = new PHPExcel();
+
+	$sheet_index = 0;
+	foreach($orders as $order){
+
+		//Только заказы в обработке импортируются в 1С
+		if($order["status"]!=1){
+			continue;
+		}
+
+		//Создание нового листа, первый создается по умолчанию
+		if($sheet_index > 0){
+			$xls->createSheet();
+		}
+
+		//Заголовок листа
+		$sheet = $xls->setActiveSheetIndex($sheet_index);
+		$sheet->setTitle('Заказ_'.$order["id"]);
+
+		//Заполнение шапки
+		$sheet->setCellValue("B1", 'ID заказа');
+		$sheet->setCellValue("C1", $order["id"]);
+		
+		//Заполнение шапки
+		$sheet->setCellValue("B2", 'Код заказа');
+		//$sheet->setCellValue("C2", $order["id"]);//Не пишем
+				
+		$sheet->setCellValue("B3", 'Дата');
+		$sheet->setCellValue("C3", date('Y.m.d H:i:s',$order["changed_at"]));
+		
+		$sheet->setCellValue("B4", 'Статус заказа');
+		$sheet->setCellValue("C4", $order["status"]);
+
+		$sheet->setCellValue("B5", 'Код контрагента');
+		$sheet->setCellValue("C5", $order["customerid"]);
+
+		$record=json_decode($order["record"],true);
+
+		$sheet->setCellValue("B6", 'Имя контрагента');
+		$sheet->setCellValue("C6", $record["customerName"]);
+		$sheet->setCellValue("B7", 'Код ответственного лица');
+		$sheet->setCellValue("C7", $record["customerUserId"]);
+		$sheet->setCellValue("B8", 'Имя ответственного лица');
+		$sheet->setCellValue("C8", $record["customerUserName"]);
+		
+		$sheet->setCellValue("B9", 'Комментарий');
+		if(isset($record["comment"])){
+			$sheet->setCellValue("C9", "Фабрикант.".$record["comment"]);
+		}else{
+			$sheet->setCellValue("C9", "Фабрикант");
+		}
+
+		$row_index=10;
+
+		//Ставим заголовки таблицы
+		$sheet->setCellValue("A$row_index", 'Код');
+		$sheet->getColumnDimension('A')->setAutoSize(true);
+		$sheet->setCellValue("B$row_index", 'Наименование');
+		$sheet->getColumnDimension('B')->setAutoSize(true);
+		$sheet->setCellValue("C$row_index", 'ID');
+		$sheet->getColumnDimension('C')->setAutoSize(true);
+		$sheet->setCellValue("D$row_index", 'Цена');
+		$sheet->getColumnDimension('D')->setAutoSize(true);
+		$sheet->setCellValue("E$row_index", 'Количество');
+		$sheet->getColumnDimension('E')->setAutoSize(true);
+		$sheet->setCellValue("F$row_index", 'Сумма');
+		$sheet->getColumnDimension('F')->setAutoSize(true);
+
+		foreach ($record["items"] as $item) {
+
+			$tmp = array();
+
+			$tmp["id"]=$item["productid"];
+			$tmp["code"] = $db_fabricant->getProductCodeById($item["productid"]);
+			$tmp["name"] = $item["name"];
+			$tmp["count"] = $item["count"];
+			if (isset($item["sale"]) && !empty($item["sale"]) && isset($item["sale"]["price_with_sale"]) && !empty($item["sale"]["price_with_sale"]))
+				$tmp["price"] = $item["sale"]["price_with_sale"];
+			else
+				$tmp["price"] = $item["price"];
+
+			$tmp["amount"] = $item["amount"];
+
+			$row_index++;
+
+			$sheet->setCellValue("A$row_index", $tmp["code"]);
+			$sheet->setCellValue("B$row_index", $tmp["name"]);
+			$sheet->setCellValue("C$row_index", $tmp["id"]);
+			$sheet->setCellValue("D$row_index", $tmp["price"]);
+			$sheet->setCellValue("E$row_index", $tmp["count"]);
+			$sheet->setCellValue("F$row_index", $tmp["amount"]);
+		}
+
+		$sheet_index++;
+	}
+
+	// Выводим HTTP-заголовки
+	 header ( "Expires: Mon, 1 Apr 1974 05:00:00 GMT" );
+	 header ( "Last-Modified: " . gmdate("D,d M YH:i:s") . " GMT" );
+	 header ( "Cache-Control: no-cache, must-revalidate" );
+	 header ( "Pragma: no-cache" );
+	 header ( "Content-type: application/vnd.ms-excel" );
+	 header ( "Content-Disposition: attachment; filename=matrix.xls" );
+
+	// Выводим содержимое файла
+	 $objWriter = new PHPExcel_Writer_Excel5($xls);
+	 $objWriter->save('php://output');
+
+});
+
+/**
+ * При создании заказа получаем связки КОД и ID
+ * method POST
+ */
+$app->post('/1c_orders_created_kustuk', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+
+	error_log("-------------1c_orders_created_kustuk".$_FILES["xls"]["name"]."----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
+
+	$db_profile=new DbHandlerProfile();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+
+
+	$count_of_braches=0;
+
+	//try{
+
+		if (!isset($_FILES["xls"])) {
+			throw new Exception('Param xls is missing');
+		}
+		// Check if the file is missing
+		if (!isset($_FILES["xls"]["name"])) {
+			throw new Exception('Property name of xls param is missing');
+		}
+		// Check the file size >100MB
+		if($_FILES["xls"]["size"] > 100*1024*1024) {
+			throw new Exception('File is too big');
+		}
+
+		$tmpFile = $_FILES["xls"]["tmp_name"];
+
+		$filename = date('dmY').'-'.uniqid('1c_orders_created_kustuk-').".xls";
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+
+		//Считываем закодированный файл xls в строку
+		$data = file_get_contents($tmpFile);
+		//Декодируем строку из base64 в нормальный вид
+		$data = base64_decode($data);
+
+		//Теперь нормальную строку сохраняем в файл
+		$success=false;
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+            @fwrite($fp, $data);
+            @fclose($fp);
+			$success=true;
+        }
+        //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+		unset($data);
+
+		//ошибка декодинга
+		if(!$success){
+			throw new Exception('Failed when decoding the recieved file');
+		}
+
+		// Подключаем класс для работы с excel
+		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+		// Подключаем класс для вывода данных в формате excel
+		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
+
+		$objPHPExcel = PHPExcel_IOFactory::load($path);
+		// Set and get active sheet
+		$objPHPExcel->setActiveSheetIndex(0);
+		$worksheet = $objPHPExcel->getActiveSheet();
+		$worksheetTitle = $worksheet->getTitle();
+		$highestRow = $worksheet->getHighestRow();
+		$highestColumn = $worksheet->getHighestColumn();
+		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+		$nrColumns = ord($highestColumn) - 64;
+
+		$db_fabricant = new DbHandlerFabricant();
+
+		for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
+			$cells = array();
+
+			$count_of_braches++;
+
+			for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
+				$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
+				$cells[] = $cell->getValue();
+			}
+
+			$id=$cells[0];
+			$code=$cells[1];
+			$date=$cells[2];
+			
+			error_log($count_of_braches.". id=".$id." code=".$code." date=".$date);
+
+		}
+		error_log(" ");
+
+		if($count_of_braches>0){
+			error_log("count_of_braches=$count_of_braches");
+			$response["all"] = $count_of_braches;
+		}
+
+
+	//} catch (Exception $e) {
+		// Exception occurred. Make error flag true
+		//$response["error"] = true;
+		//$response["message"] = $e->getMessage();
+		//$response["success"] = 0;
+		//$response = $e->getMessage();
+	//}
+		$response["error"] = false;
+		$response["message"] = "count_of_braches=".$count_of_braches;
+		$response["success"] = 0;
+		
+		echoResponse(200, $response);
+});
+
 
 function getExcelOfProducts($products){
 

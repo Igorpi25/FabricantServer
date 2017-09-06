@@ -62,7 +62,7 @@ class DbHandlerFabricant extends DbHandler{
 		
 		// insert query
 		$stmt = $this->conn->prepare("INSERT INTO products(contractorid, name, price, info, status, code1c) values(?, ?, ?, ?, ?, ?)");
-		$stmt->bind_param("isdsii", $contractorid, $name, $price, $info, $status, $code1c);
+		$stmt->bind_param("isdsis", $contractorid, $name, $price, $info, $status, $code1c);
 		$stmt->execute();
 		$result = $this->conn->insert_id;
 		$stmt->close();
@@ -80,7 +80,7 @@ class DbHandlerFabricant extends DbHandler{
 		
 		// insert query
 		$stmt = $this->conn->prepare("INSERT INTO products(id,contractorid, name, price, info, status, code1c) values(?, ?, ?, ?, ?, ?, ?)");
-		$stmt->bind_param("iisdsii", $id, $contractorid, $name, $price, $info, $status, $code1c);
+		$stmt->bind_param("iisdsis", $id, $contractorid, $name, $price, $info, $status, $code1c);
 		$stmt->execute();
 		$result = $this->conn->insert_id;
 		$stmt->close();
@@ -285,7 +285,7 @@ class DbHandlerFabricant extends DbHandler{
 	public function updateProductCode($id, $code) {
 		// update query
 		$stmt = $this->conn->prepare("UPDATE `products` SET `code1c`= ? , `changed_at`=CURRENT_TIMESTAMP() WHERE `id`=?");
-		$stmt->bind_param("ii", $code, $id);
+		$stmt->bind_param("si", $code, $id);
 		$result = $stmt->execute();
 		$stmt->close();
 		return $result;
@@ -312,7 +312,7 @@ class DbHandlerFabricant extends DbHandler{
 	public function getProductByCode($contractorid,$code) {
 
 		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c FROM products p WHERE p.contractorid=? AND p.code1c =?");
-		$stmt->bind_param("ii", $contractorid,$code);
+		$stmt->bind_param("is", $contractorid,$code);
 		if ($stmt->execute()) {
 
 			$stmt->store_result();
@@ -380,7 +380,7 @@ class DbHandlerFabricant extends DbHandler{
 	public function getOrderById($id) {
 	
 		$stmt = $this->conn->prepare("
-			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.created_at, o.changed_at 
+			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.code1c, o.created_at, o.changed_at 
 			FROM orders o 
 			WHERE ( o.id = ? ) ");
 		
@@ -392,7 +392,7 @@ class DbHandlerFabricant extends DbHandler{
 			$stmt->store_result();
 			if($stmt->num_rows==0)return NULL;
 			
-			$stmt->bind_result($id,$contractorid,$customerid, $status, $record, $created_at, $changed_at);            
+			$stmt->bind_result($id,$contractorid,$customerid, $status, $record, $code1c, $created_at, $changed_at);            
 
 			$stmt->fetch();
 
@@ -402,6 +402,7 @@ class DbHandlerFabricant extends DbHandler{
 			$res["customerid"] = $customerid;
 			$res["status"] = $status;
 			$res["record"] = $record;
+			$res["code1c"] = $code1c;
 			
 			$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 			$res["created_at"] = $timestamp_object->getTimestamp();	
@@ -422,7 +423,7 @@ class DbHandlerFabricant extends DbHandler{
 	public function getAllOrdersOfContractor($contractorid) {
 	
 		$stmt = $this->conn->prepare("
-			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.created_at, o.changed_at 
+			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.code1c, o.created_at, o.changed_at 
 			FROM orders o 
 			WHERE ( o.contractorid = ? ) 
 			ORDER BY o.created_at DESC ");
@@ -432,7 +433,7 @@ class DbHandlerFabricant extends DbHandler{
 		$orders=array();
 
         if ($stmt->execute()) {
-			$stmt->bind_result($id,$contractorid,$customerid, $status, $record, $created_at, $changed_at);            
+			$stmt->bind_result($id,$contractorid,$customerid, $status, $record, $code1c, $created_at, $changed_at);            
 
             while($stmt->fetch()){
 				$res= array();
@@ -441,6 +442,7 @@ class DbHandlerFabricant extends DbHandler{
 				$res["customerid"] = $customerid;
 				$res["status"] = $status;
 				$res["record"] = $record;
+				$res["code1c"] = $code1c;
 				
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 				$res["created_at"] = $timestamp_object->getTimestamp();
@@ -473,9 +475,82 @@ class DbHandlerFabricant extends DbHandler{
 			return NULL;
 	}
 
+	public function getAllOrdersOfContractorIntervalWeb($contractorid, $interval) {
+		$stmt=$this->conn->prepare("
+			SELECT status, record FROM orders 
+			WHERE contractorid=? AND created_at BETWEEN DATE_SUB(NOW(), INTERVAL ? DAY) AND NOW()
+		");
+		$stmt->bind_param("ii", $contractorid,$interval);
+		if ($stmt->execute()) {
+			$result=array();
+			$stmt->bind_result($status, $records);
+			while($stmt->fetch()) {
+				$record = json_decode($records, true);
+				$record["status"] = $status;
+				$result[] = $record;
+			}
+			$stmt->close();
+			return $result;
+		}
+		else
+			return NULL;
+	}
+
+	public function getAllOrdersOfCustomerWeb($customerid) {
+		$stmt=$this->conn->prepare("SELECT status, record FROM orders WHERE customerid=?");
+		$stmt->bind_param("i", $customerid);
+		if ($stmt->execute()) {
+			$result=array();
+			$stmt->bind_result($status, $records);
+			while($stmt->fetch()) {
+				$record = json_decode($records, true);
+				$record["status"] = $status;
+				$result[] = $record;
+			}
+			$stmt->close();
+			return $result;
+		}
+		else
+			return NULL;
+	}
+
+	public function getAllOrdersWeb($interval) {
+		$stmt=$this->conn->prepare("
+			SELECT `status`, `record` FROM `orders` 
+			WHERE created_at BETWEEN DATE_SUB(NOW(), INTERVAL ? DAY) AND NOW()
+		");
+		$stmt->bind_param("i", $interval);
+		if ($stmt->execute()) {
+			$result=array();
+			$stmt->bind_result($status, $records);
+			while($stmt->fetch()) {
+				$record = json_decode($records, true);
+				$record["status"] = $status;
+				$result[] = $record;
+			}
+			$stmt->close();
+			return $result;
+		}
+		else
+			return NULL;
+	}
+
 	public function newOrderNotify($contractorid) {
 		$stmt = $this->conn->prepare("SELECT count(*) AS count FROM orders WHERE contractorid=?");
 		$stmt->bind_param("i", $contractorid);
+		$result = 0;
+		if ($stmt->execute()) {
+			$stmt->bind_result($count);
+			while($stmt->fetch()) {
+				$result=$count;
+			}
+			$stmt->close();
+		}
+		return $result;
+	}
+
+	public function newOrderNotifyAll() {
+		$stmt = $this->conn->prepare("SELECT count(*) AS count FROM orders");
 		$result = 0;
 		if ($stmt->execute()) {
 			$stmt->bind_result($count);
@@ -1064,7 +1139,7 @@ class DbHandlerFabricant extends DbHandler{
 	public function getProductsDelta($timestamp) {
 	
         $stmt = $this->conn->prepare("
-			SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at 
+			SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.code1c, p.changed_at 
 			FROM products p 
 			WHERE ( p.changed_at > ? )  ");
 		
@@ -1077,7 +1152,7 @@ class DbHandlerFabricant extends DbHandler{
 		
         if ($stmt->execute()) {
         			
-            $stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at);            
+            $stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $code1c, $changed_at);            
             
             while($stmt->fetch()) {
             
@@ -1088,6 +1163,7 @@ class DbHandlerFabricant extends DbHandler{
 	            $res["status"] = $status;
 				$res["price"] = $price;
 				$res["info"] = $info;
+				$res["code1c"] = $code1c;
 				
 	            $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 				$res["changed_at"] = $timestamp_object->getTimestamp();
@@ -1104,7 +1180,7 @@ class DbHandlerFabricant extends DbHandler{
     public function getContractorProductsDelta($contractorid,$timestamp) {
 	
         $stmt = $this->conn->prepare("
-			SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at 
+			SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.code1c, p.changed_at 
 			FROM products p 
 			WHERE ( p.changed_at > ? ) AND (p.contractorid = ?) ");
 		
@@ -1117,7 +1193,7 @@ class DbHandlerFabricant extends DbHandler{
 		
         if ($stmt->execute()) {
         			
-            $stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at);            
+            $stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $code1c, $changed_at);            
             
             while($stmt->fetch()) {
             
@@ -1128,6 +1204,7 @@ class DbHandlerFabricant extends DbHandler{
 	            $res["status"] = $status;
 				$res["price"] = $price;
 				$res["info"] = $info;
+				$res["code1c"] = $code1c;
 				
 	            $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 				$res["changed_at"] = $timestamp_object->getTimestamp();
@@ -1144,7 +1221,7 @@ class DbHandlerFabricant extends DbHandler{
 	public function getOrdersDelta($timestamp) {
 	
         $stmt = $this->conn->prepare("
-			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.created_at, o.changed_at 
+			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.code1c, o.created_at, o.changed_at 
 			FROM orders o 
 			WHERE ( o.changed_at > ? ) ");
 		
@@ -1187,7 +1264,7 @@ class DbHandlerFabricant extends DbHandler{
 	
 		//Здесь используется order_operation, а не просто order из-за того, что заказы могут быть переданы от одного заказчика другому (насколько я помню так было, я давно это сделал)
         $stmt = $this->conn->prepare("
-			SELECT p.orderid AS id, p.contractorid, p.customerid, CASE p.type WHEN 5 THEN 5 ELSE o.status END AS status, p.record, o.created_at AS created_at, p.created_at AS changed_at 
+			SELECT p.orderid AS id, p.contractorid, p.customerid, CASE p.type WHEN 5 THEN 5 ELSE o.status END AS status, p.record, o.code1c AS code1c, o.created_at AS created_at, p.created_at AS changed_at 
 			FROM orders_operations p 
 			INNER JOIN ( 
 				SELECT orderid, max(created_at) AS created_at 
@@ -1207,7 +1284,7 @@ class DbHandlerFabricant extends DbHandler{
 		
         if ($stmt->execute()) {
         			
-            $stmt->bind_result($id,$contractorid,$customerid, $status, $record, $created_at, $changed_at);            
+            $stmt->bind_result($id,$contractorid,$customerid, $status, $record, $code1c, $created_at, $changed_at);            
             
             while($stmt->fetch()){
             
@@ -1217,6 +1294,7 @@ class DbHandlerFabricant extends DbHandler{
 	            $res["customerid"] = $customerid;
 	            $res["status"] = $status;
 				$res["record"] = $record;
+				$res["code1c"] = $code1c;
 				
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 				$res["created_at"] = $timestamp_object->getTimestamp();	
@@ -1236,7 +1314,7 @@ class DbHandlerFabricant extends DbHandler{
 	public function getOrdersDeltaOfContractor($contractorid, $timestamp) {
 	
         $stmt = $this->conn->prepare("
-			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.created_at, o.changed_at 
+			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.code1c, o.created_at, o.changed_at 
 			FROM orders o 
 			WHERE ( (o.contractorid = ?) AND ( o.changed_at > ? ) ) ");
 		
@@ -1249,7 +1327,7 @@ class DbHandlerFabricant extends DbHandler{
 		
         if ($stmt->execute()) {
         			
-            $stmt->bind_result($id,$contractorid,$customerid, $status, $record, $created_at, $changed_at);            
+            $stmt->bind_result($id,$contractorid,$customerid, $status, $record, $code1c, $created_at, $changed_at);            
             
             while($stmt->fetch()){
             
@@ -1259,6 +1337,7 @@ class DbHandlerFabricant extends DbHandler{
 	            $res["customerid"] = $customerid;
 	            $res["status"] = $status;
 				$res["record"] = $record;
+				$res["code1c"] = $code1c;
 				
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 				$res["created_at"] = $timestamp_object->getTimestamp();	
@@ -1278,7 +1357,7 @@ class DbHandlerFabricant extends DbHandler{
 	public function getOrdersDeltaOfContractorAgent($contractorid, $userid, $timestamp) {
 	
         $stmt = $this->conn->prepare("
-			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.created_at, o.changed_at 
+			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.code1c, o.created_at, o.changed_at 
 			FROM orders o 
 			INNER JOIN ( 
 				SELECT groupid 
@@ -1296,7 +1375,7 @@ class DbHandlerFabricant extends DbHandler{
 		
         if ($stmt->execute()) {
         			
-            $stmt->bind_result($id,$contractorid,$customerid, $status, $record, $created_at, $changed_at);            
+            $stmt->bind_result($id,$contractorid,$customerid, $status, $record, $code1c, $created_at, $changed_at);            
             
             while($stmt->fetch()){
             
@@ -1306,6 +1385,7 @@ class DbHandlerFabricant extends DbHandler{
 	            $res["customerid"] = $customerid;
 	            $res["status"] = $status;
 				$res["record"] = $record;
+				$res["code1c"] = $code1c;
 				
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 				$res["created_at"] = $timestamp_object->getTimestamp();	
