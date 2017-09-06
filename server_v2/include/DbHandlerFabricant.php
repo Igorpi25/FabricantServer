@@ -705,7 +705,7 @@ class DbHandlerFabricant extends DbHandler{
 		}
 	}
 
-	public function getOrderById($code) {
+	public function getOrderByCode($code) {
 	
 		$stmt = $this->conn->prepare("
 			SELECT o.id, o.contractorid, o.customerid, o.status, o.record, o.code1c, o.created_at, o.changed_at 
@@ -747,7 +747,7 @@ class DbHandlerFabricant extends DbHandler{
 			return NULL;
 		}
 	}
-		
+	
 	//-------------------OrderOperations-----------------------
 	
 	public function addOrderOperation($orderid,$contractorid,$customerid,$type,$record,$comment){
@@ -1472,7 +1472,7 @@ class DbHandlerFabricant extends DbHandler{
         return $orders;        
     }
 	
-		
+	
 }
  
 ?>
