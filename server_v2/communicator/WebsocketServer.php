@@ -121,6 +121,7 @@ define("CONSOLE_OPERATION_ORDER", 3);
 define("CONSOLE_OPERATION_SALE", 4);
 define("CONSOLE_OPERATION_GROUP_CHANGED", 5);
 define("CONSOLE_OPERATION_PRODUCT_CHANGED", 6);
+define("CONSOLE_OPERATION_NOTIFY_PRODUCTS", 7);
 
 class WebsocketServer {
 
@@ -815,6 +816,25 @@ protected function outgoingNotifyProductChanged($productid){
 	foreach($this->connects as $connect) {
 		
 		$this->outgoingProduct($connect,$product);
+		
+	}
+	$this->log(">>");
+	
+}
+
+protected function outgoingNotifyProducts($products){
+	
+	
+	$this->log("<<outgoingNotifyProducts products count=".count($products));
+	
+	foreach($this->connects as $connect) {
+		
+		$json = array();
+		$json["transport"]=TRANSPORT_FABRICANT;
+		$json["type"]=OUTGOING_PRODUCTS_DELTA;
+		$json["products"]=$products;
+		
+		$this->sendFrame($connect, $json);
 		
 	}
 	$this->log(">>");
@@ -1558,6 +1578,22 @@ protected function ProcessConsoleOperation($connect,$info) {
 			//Response to console client
 			$response = array();
 			$response["message"]="WebsocketServer. ProcessConsoleOperation CONSOLE_OPERATION_PRODUCT_CHANGED success productid=".$productid;
+			$this->sendFrame($connect, $response);
+			
+		break;
+		
+		case CONSOLE_OPERATION_NOTIFY_PRODUCTS:
+			$products=$info["products"];
+			
+			$this->log("<<<CONSOLE_OPERATION_NOTIFY_PRODUCTS:");
+			
+			$this->outgoingNotifyProducts($products);
+			
+			$this->log(">>>");
+			
+			//Response to console client
+			$response = array();
+			$response["message"]="WebsocketServer. ProcessConsoleOperation CONSOLE_OPERATION_NOTIFY_PRODUCTS success products count=".count($products);
 			$this->sendFrame($connect, $response);
 			
 		break;

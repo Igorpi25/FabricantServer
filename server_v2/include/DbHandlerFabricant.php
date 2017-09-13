@@ -124,14 +124,14 @@ class DbHandlerFabricant extends DbHandler{
 
 	public function getProductById($id) {
 
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c FROM products p WHERE p.id =?");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c, p.article FROM products p WHERE p.id =?");
 		$stmt->bind_param("i", $id);
 		if ($stmt->execute()) {
 
 			$stmt->store_result();
 			if($stmt->num_rows==0)return NULL;
 
-			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at,$code1c);            
+			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at,$code1c,$article);            
 
 			$stmt->fetch();
 
@@ -143,6 +143,7 @@ class DbHandlerFabricant extends DbHandler{
 			$res["price"] = $price;
 			$res["info"] = $info;
 			$res["code1c"] = $code1c;
+			$res["article"] = $article;
 
 			$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 			$res["changed_at"] = $timestamp_object->getTimestamp();	
@@ -155,12 +156,12 @@ class DbHandlerFabricant extends DbHandler{
 	}
 	
 	public function getProductsOfContractor($contractorid){
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c FROM products p WHERE p.contractorid=? AND p.status<>0");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c, p.article FROM products p WHERE p.contractorid=? AND p.status<>0");
 		$stmt->bind_param("i", $contractorid);
 		if ($stmt->execute()){
 			$stmt->store_result();
 			if($stmt->num_rows==0) return NULL;
-			$stmt->bind_result($id, $contractorid, $name, $status, $price, $info, $changed_at, $code1c);
+			$stmt->bind_result($id, $contractorid, $name, $status, $price, $info, $changed_at, $code1c,$article);
 			$result=array();
 			while($stmt->fetch()){
 				$res=array();
@@ -171,6 +172,7 @@ class DbHandlerFabricant extends DbHandler{
 				$res["price"] = $price;
 				$res["info"] = $info;
 				$res["code1c"] = $code1c;
+				$res["article"] = $article;
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 				$res["changed_at"] = $timestamp_object->getTimestamp();
 				$result[]=$res;
@@ -183,12 +185,12 @@ class DbHandlerFabricant extends DbHandler{
 	}
 
 	public function getActiveProductsOfContractor($contractorid){
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c FROM products p WHERE p.contractorid=? AND p.status<>0 AND p.status<>4");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c, p.article FROM products p WHERE p.contractorid=? AND p.status<>0 AND p.status<>4");
 		$stmt->bind_param("i", $contractorid);
 		if ($stmt->execute()){
 			$stmt->store_result();
 			if($stmt->num_rows==0) return NULL;
-			$stmt->bind_result($id, $contractorid, $name, $status, $price, $info, $changed_at, $code1c);
+			$stmt->bind_result($id, $contractorid, $name, $status, $price, $info, $changed_at, $code1c, $article);
 			$result=array();
 			while($stmt->fetch()){
 				$res=array();
@@ -199,6 +201,7 @@ class DbHandlerFabricant extends DbHandler{
 				$res["price"] = $price;
 				$res["info"] = $info;
 				$res["code1c"] = $code1c;
+				$res["article"] = $article;
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 				$res["changed_at"] = $timestamp_object->getTimestamp();
 				$result[]=$res;
@@ -211,12 +214,12 @@ class DbHandlerFabricant extends DbHandler{
 	}
 
 	public function getPublishedProductsOfContractor($contractorid){
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at FROM products p WHERE p.contractorid=? AND p.status=2");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c, p.article FROM products p WHERE p.contractorid=? AND p.status=2");
 		$stmt->bind_param("i", $contractorid);
 		if ($stmt->execute()){
 			$stmt->store_result();
 			if($stmt->num_rows==0) return NULL;
-			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at);
+			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at, $code1c, $article);
 			$result=array();
 			while($stmt->fetch()){
 				$res=array();
@@ -226,6 +229,8 @@ class DbHandlerFabricant extends DbHandler{
 				$res["status"] = $status;
 				$res["price"] = $price;
 				$res["info"] = $info;
+				$res["code1c"] = $code1c;
+				$res["article"] = $article;
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 				$res["changed_at"] = $timestamp_object->getTimestamp();
 				$result[]=$res;
@@ -238,11 +243,11 @@ class DbHandlerFabricant extends DbHandler{
 	}
 
 	public function getAllProducts(){
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c FROM products p");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c, p.article FROM products p");
 		if ($stmt->execute()){
 			$stmt->store_result();
 			if($stmt->num_rows==0) return NULL;
-			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at, $code1c);
+			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at, $code1c, $article);
 			$result=array();
 			while($stmt->fetch()){
 				$res=array();
@@ -255,6 +260,7 @@ class DbHandlerFabricant extends DbHandler{
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 				$res["changed_at"] = $timestamp_object->getTimestamp();
 				$res["code1c"] = $code1c;
+				$res["article"] = $article;
 				$result[]=$res;
 			}
 			$stmt->close();
@@ -290,6 +296,15 @@ class DbHandlerFabricant extends DbHandler{
 		$stmt->close();
 		return $result;
 	}
+	
+	public function updateProductArticle($id, $article) {
+		// update query
+		$stmt = $this->conn->prepare("UPDATE `products` SET `article`= ? , `changed_at`=CURRENT_TIMESTAMP() WHERE `id`=?");
+		$stmt->bind_param("si", $article, $id);
+		$result = $stmt->execute();
+		$stmt->close();
+		return $result;
+	}
 
 	public function getProductCodeById($id) {
 
@@ -311,14 +326,14 @@ class DbHandlerFabricant extends DbHandler{
 
 	public function getProductByCode($contractorid,$code) {
 
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c FROM products p WHERE p.contractorid=? AND p.code1c =?");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c, p.article FROM products p WHERE p.contractorid=? AND p.code1c =?");
 		$stmt->bind_param("is", $contractorid,$code);
 		if ($stmt->execute()) {
 
 			$stmt->store_result();
 			if($stmt->num_rows==0)return NULL;
 
-			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at,$code1c);            
+			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at,$code1c,$article);            
 
 			$stmt->fetch();
 
@@ -335,6 +350,7 @@ class DbHandlerFabricant extends DbHandler{
 			$res["changed_at"] = $timestamp_object->getTimestamp();	
 
 			$res["code1c"] = $code1c;
+			$res["article"] = $article;
 			
 			$stmt->close();
 			return $res;

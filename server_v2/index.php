@@ -19,6 +19,8 @@ $app = new \Slim\Slim();
 $user_id = NULL;
 $api_key = NULL;
 
+$mode_1c_synch = false;
+
 /**
  * It used to Slim testing during installation the server
  */
@@ -774,71 +776,24 @@ $app->post('/orders/create', 'authenticate', function () use ($app)  {
 
 	// check for required params
     verifyRequiredParams(array('order'));
-
-
-	$db_profile = new DbHandlerProfile();
-	$db_fabricant = new DbHandlerFabricant();
+	
+	$json_order = $app->request->post('order');
 
 	global $user_id;
 
-	$response = array();
-
-	$record=array();
-
-	//try{
-
-		$json_order = $app->request->post('order');
-		$order=json_decode($json_order,true);
-
-		if(!isset($order["contractorid"]) || !isset($order["customerid"])){
-			throw new Exception("Missing contractorid or customerid in order");
-		}
-
-		checkUserPermissionToGroups($order["contractorid"],$order["customerid"]);
-
-		$record=makeOrderRecord($order);
-
-		//Customer user info to record
-		$customer_user=$db_profile->getUserById($user_id);
-		$record["customerUserId"]=$user_id;
-		$record["customerUserName"]=$customer_user["name"];
-		$record["customerUserPhone"]=$customer_user["phone"];
-
-		//Console command
-		$json_header=array();
-		$json_header["console"]="v2/index/orders/create";
-		$json_header["operation"]=M_CONSOLE_OPERATION_ORDER;
-		$json_header["order_operationid"]=M_ORDEROPERATION_CREATE;
-		$json_header["senderid"]=$user_id;
-		$json_header["record"]=json_encode($record,JSON_UNESCAPED_UNICODE);
-		$console_response=consoleCommand($json_header);
-
-		$response['consoleCommand_create_order'] = $console_response["message"];
-
-		$response['error'] = false;
-		$response['message'] = "Order has been created";
-		$response['order'] = $db_fabricant->getOrderById($console_response["orderid"]);
-		$response['success'] = 1;
-
-
-	/*} catch (Exception $e) {
-
-		$response['error'] = true;
-		$response['message'] = $e->getMessage();
-		$response['success'] = 0;
-		$response['make_record_logs'] = "make_record_logs: ".implode (" , ",$record["make_record_logs"]);
-	}*/
+	$response=createOrder($json_order,$user_id);
 
 	echoResponse(200, $response);
-
-	//sendSMS("CreateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
-
+	if($response["success"]==1){
+		//sendSMS("CreateOrderid".$response['order']['id']."customerid".$response['order']['customerid']);
+	}
+	
 });
 
 $app->post('/orders/update', 'authenticate', function () use ($app)  {
 
 	// check for required params
-    verifyRequiredParams(array('order','orderid'));
+  verifyRequiredParams(array('order','orderid'));
 
 	$old_order_id = $app->request->post('orderid');
 	$json_order = json_decode($app->request->post('order'),true);
@@ -909,6 +864,9 @@ $app->post('/orders/remove', 'authenticate', function () use ($app)  {
 		if( ($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING)&&($order["status"]!=$db_fabricant::STATUS_ORDER_CONFIRMED)&&($order["status"]!=$db_fabricant::STATUS_ORDER_ONWAY) ){
 				throw new Exception('Order status is not correct for remove operation');
 		}
+		
+		//Если стоит запрет на изменение заказов импортированных в 1С
+		check1CSynchronizingPermissions($orderid);
 
 		$record=json_decode($order["record"],true);
 		$user=$db_profile->getUserById($user_id);
@@ -978,6 +936,9 @@ $app->post('/orders/make_paid', 'authenticate', function () use ($app)  {
 			throw new Exception('Order status is not correct for remove operation');
 		}
 
+		//Если стоит запрет на изменение заказов импортированных в 1С
+		check1CSynchronizingPermissions($orderid);
+		
 		$record=json_decode($order["record"],true);
 
 		$user=$db_profile->getUserById($user_id);
@@ -1036,6 +997,11 @@ $app->post('/orders/hide', 'authenticate', function () use ($app)  {
 			throw new Exception('You have no permission. Only Fabricant Admin has permission');
 		}
 
+		
+		//Если стоит запрет на изменение заказов импортированных в 1С
+		check1CSynchronizingPermissions($orderid);
+		
+		
 		$record=json_decode($order["record"],true);
 		$user=$db_profile->getUserById($user_id);
 
@@ -1192,7 +1158,7 @@ $app->post('/orders/remove_visa', 'authenticate', function () use ($app)  {
  * method POST
  * file - XLS файл с количеством товаров
  */
-$app->post('/orders/1c_order_pass', function() use ($app) {
+$app->post('/orders/1c_orders_pass', function() use ($app) {
 
 	// array for final json response
 	$response = array();
@@ -1447,7 +1413,484 @@ function order_item_id_price_count_compare($a,$b){
   }
 }
 
-//-------------Orders Utils------------------------
+//----------------------Kustuk-----------------------------------
+
+/**
+ * При проведении заказа в 1с
+ * method POST
+ * file - XLS файл с количеством товаров
+ */
+$app->post('/1c_orders_pass_kustuk', function() use ($app) {
+
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+		$response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+
+	global $api_key,$user_id,$mode_1c_synch;
+	$api_key=$user["api_key"];
+	$user_id=$user["id"];//Это нужно чтобы в функциях updateOrder и acceptOrder
+	$mode_1c_synch=true;//Чтобы не было запрета на редактирование изза визы в функции check1CSynchronizingPermissions
+
+		
+	
+	//Проверка доступна ли 1С синхронизация у этого поставщика
+	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
+
+	
+
+	if (!isset($_FILES["xls"])) {
+		throw new Exception('Param xls is missing');
+	}
+	//Check if the file is missing
+	if (!isset($_FILES["xls"]["name"])) {
+		throw new Exception('Property name of xls param is missing');
+	}
+	//Check the file size >100MB
+	if($_FILES["xls"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
+
+	$tmpFile = $_FILES["xls"]["tmp_name"];
+
+	$filename = date('dmY').'-'.uniqid('1c_orders_kustuk_pass-').".xls";
+	$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+
+	//Считываем закодированный файл xls в строку
+	$data = file_get_contents($tmpFile);
+
+	//Декодируем строку из base64 в нормальный вид
+	$data = base64_decode($data);
+
+	//Теперь нормальную строку сохраняем в файл
+	$success=false;
+	if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+		@fwrite($fp, $data);
+		@fclose($fp);
+		$success=true;
+	}
+
+	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+	unset($data);
+
+	//Ошибка декодинга
+	if(!$success){
+		throw new Exception('Failed when decoding the recieved file');
+	}
+
+	error_log("-------------1c_orders_kustuk_pass----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
+
+	// Подключаем класс для работы с excel
+	require_once dirname(__FILE__).'/libs/PHPExcel/PHPExcel.php';
+	// Подключаем класс для вывода данных в формате excel
+	require_once dirname(__FILE__).'/libs/PHPExcel/PHPExcel/IOFactory.php';
+
+	$objPHPExcel = PHPExcel_IOFactory::load($path);
+	
+	error_log("Sheets count: ".$objPHPExcel->getSheetCount());
+			
+	foreach ($objPHPExcel->getWorksheetIterator() as $worksheet) {
+	
+		//try{
+			
+			$worksheetTitle = $worksheet->getTitle();
+			$highestRow = $worksheet->getHighestRow();
+			
+			error_log("worksheetTitle: ".$worksheetTitle);
+			error_log("highestRow: ".($highestRow));
+			
+			$orderid = $worksheet->getCellByColumnAndRow(2, 1)->getValue();
+			$ordercode = $worksheet->getCellByColumnAndRow(2, 2)->getValue();
+			$orderdate = $worksheet->getCellByColumnAndRow(2, 3)->getValue();
+			$orderstatus = $worksheet->getCellByColumnAndRow(2, 4)->getValue();
+			
+			$contragentid = $worksheet->getCellByColumnAndRow(2, 5)->getValue();
+			$contragentcode = $worksheet->getCellByColumnAndRow(2, 6)->getValue();
+			$contragentname = $worksheet->getCellByColumnAndRow(2, 7)->getValue();
+			$contragentaddress = $worksheet->getCellByColumnAndRow(2, 8)->getValue();
+			$contragentphone = $worksheet->getCellByColumnAndRow(2, 9)->getValue();
+			
+			$userid = $worksheet->getCellByColumnAndRow(2, 10)->getValue();
+			$usercode = $worksheet->getCellByColumnAndRow(2, 11)->getValue();
+			$username = $worksheet->getCellByColumnAndRow(2, 12)->getValue();
+			$userphone = $worksheet->getCellByColumnAndRow(2, 13)->getValue();
+			
+			$comment = $worksheet->getCellByColumnAndRow(2, 14)->getValue();
+			
+			error_log("orderid: ".$orderid);
+			error_log("ordercode: ".$ordercode);
+			error_log("orderdate: ".$orderdate);
+			error_log("orderstatus: ".$orderstatus);
+			
+			error_log("contragentid: ".$contragentid);
+			error_log("contragentcode: ".$contragentcode);
+			error_log("contragentname: ".$contragentname);
+			error_log("contragentaddress: ".$contragentaddress);
+			error_log("contragentphone: ".$contragentphone);
+			
+			error_log("userid: ".$userid);
+			error_log("usercode: ".$usercode);
+			error_log("username: ".$username);
+			error_log("userphone: ".$userphone);
+			
+			error_log("comment: ".$comment);
+			
+			if(!isset($ordercode)){
+				$response['error'] = true;
+				$response['message'] = 'Ordercode is missing';
+				echoResponse(200,$response);
+				continue;
+			}
+			
+			$rows=array();
+			
+			error_log("recieved order rows:");
+			
+			for ($rowIndex = 21; $rowIndex <= $highestRow; ++$rowIndex) {
+				$cells = array();
+
+				$code = $worksheet->getCellByColumnAndRow(0, $rowIndex)->getValue();
+				$nomenclature=$worksheet->getCellByColumnAndRow(1, $rowIndex)->getValue();
+				$id = intval($worksheet->getCellByColumnAndRow(2, $rowIndex)->getValue());
+				$price=floatval($worksheet->getCellByColumnAndRow(3, $rowIndex)->getValue());
+				$count = intval($worksheet->getCellByColumnAndRow(4, $rowIndex)->getValue());
+				$amount=floatval($worksheet->getCellByColumnAndRow(5, $rowIndex)->getValue());
+
+
+				$product=$db_fabricant->getProductByCode($contractorid,$code);
+
+				//Если код продукта не существует, то пропускаем этот продукт
+				if(!isset($product)){
+					error_log("Product code=".$code." rowIndex=".$rowIndex." not found");
+
+					$row=array();
+					$row["code"]=$code;
+					$row["productid"]=-1;
+					$row["name"]=$nomenclature;
+					$row["price"]=$price;
+					$row["count"]=$count;
+					$row["amount"]=$amount; 
+				}else{
+
+					$row=array();
+					$row["code"]=$code;
+					$row["productid"]=$product["id"];
+					$row["name"]=$nomenclature;
+					$row["price"]=$price;
+					$row["count"]=$count;
+					$row["amount"]=$amount;
+				}
+
+
+				error_log(($rowIndex-12)."). code=".$row["code"]." productid=".$row["productid"]." price=".$row["price"]." count=".$row["count"]." amount=".$row["amount"]);
+
+				$rows[]=$row;
+			}
+			
+			//Находим заказ по коду
+			$order=$db_fabricant->getOrderByCode($ordercode);
+			
+			
+			if(!isset($order)){	
+			
+				error_log("Creating new order: ordercode=".$ordercode." contragentcode=".$contragentcode);
+				
+				$customerid=$db_profile->getCustomerIdInContractorByCode($contragentcode,$contractorid);
+				
+				//Если заказчик не существует то создаем его, и привязываем его id к contracgentcode
+				if( !isset($customerid) && isset($contragentcode) ){
+				
+					//Создаем нового заказчика				
+					error_log("creating new customer");		
+					$create_customer_response=createCustomer($contragentname,$contragentaddress,$contragentphone,"{}",$user_id);
+					
+					if( isset($create_customer_response["id"]) ){
+						error_log("created");
+						$customerid=$create_customer_response["id"];
+						
+						error_log("set customer code in contarctor");
+						//Связка созданного заказчика с контрагентом 1С
+						$db_profile->setCustomerCodeInContractor($customerid, $contragentcode,$contractorid);
+			
+					}else{
+						error_log("failed");
+						continue;
+					}
+				}
+			
+				//Если заказ не существует, то создаем новый на основе полученных данных
+				$json_order=array();
+				$json_order["contractorid"]=$contractorid;
+				$json_order["customerid"]=$customerid;
+				$json_order["phone"]=$phone;
+				$json_order["comment"]=$comment;
+
+				$json_order_items=array();
+				foreach($rows as $row){
+					$json_order_items["".$row["productid"]]=$row["count"];
+				}				
+				$json_order["items"]=$json_order_items;
+
+				error_log("creating order user_id=".$user_id." phone=".$phone." contractorid=".$contractorid." customerid=".$customerid);
+				$create_order_response=createOrder($json_order,$user_id);
+				error_log("created");
+				
+				$order=$create_order_response['order'];
+			
+			}else{		
+			
+				//Если заказ существует, то обновляем данные
+				
+				$record=json_decode($order["record"],true);
+				$items=$record["items"];
+				
+				if(!isset($items))$items=array();
+
+				error_log("existing order items:");
+
+				foreach($items as $key=>$item){
+					$item["code"]=$db_fabricant->getProductCodeById($item["productid"]);
+					error_log(($key+1)."). code=".$item["code"]." productid=".$item["productid"]." price=".$item["price"]." count=".$item["count"]." amount=".$item["amount"]);
+				}
+
+				$added_items=array_udiff($rows,$items,"order_item_id_compare");
+				$deleted_items=array_udiff($items,$rows,"order_item_id_compare");
+
+				$rows_intersect=array_uintersect($rows,$items,"order_item_id_compare");
+				$items_intersect=array_uintersect($items,$rows,"order_item_id_compare");
+				
+				$changed_items=array();
+
+				foreach($rows_intersect as $a){				
+					$found=false;				
+					foreach($items_intersect as $b){
+						if(order_item_id_price_count_compare($a,$b)==0){
+							$found=true;
+							break;
+						}
+					}
+					if(!$found)$changed_items[]=$a;				
+				}
+				
+				$update_flag=false;
+
+				if(count($added_items)>0){
+					$update_flag=true;
+					error_log(count($added_items)." items added");
+					foreach ($added_items as $key=>$item) {
+						error_log(($key+1)."). productid=".$item["productid"]." price=".$item["price"]." count=".$item["count"]." amount=".$item["amount"]);
+					}
+				}else{
+					error_log("No items added");
+				}
+
+				if(count($deleted_items)){
+					$update_flag=true;
+					error_log(count($deleted_items)." items deleted");
+					foreach ($deleted_items as $key=>$item) {
+						error_log(($key+1)."). productid=".$item["productid"]." price=".$item["price"]." count=".$item["count"]." amount=".$item["amount"]);
+					}
+				}else{
+					error_log("No items deleted");
+				}
+
+				if(count($changed_items)){
+					$update_flag=true;
+					error_log(count($changed_items)." items changed");
+					foreach ($changed_items as $key=>$item) {
+						error_log(($key+1)."). productid=".$item["productid"]." price=".$item["price"]." count=".$item["count"]." amount=".$item["amount"]);
+					}
+				}else{
+					error_log("No items changed");
+				}
+				
+				if($orderstatus==1 && $order["status"]!=1){
+					$update_flag=true;
+				}
+				
+				$changed_flag=false;
+				
+				if($update_flag){
+					$changed_flag=true;
+					
+					$json_order=array();
+					$json_order["contractorid"]=$contractorid;
+					$json_order["customerid"]=$order["customerid"];
+					$json_order["phone"]=$record["phone"];
+					$json_order["comment"]=$comment;
+
+					$json_order_items=array();
+					foreach($rows as $row){
+						$json_order_items["".$row["productid"]]=$row["count"];
+					}
+					
+					$json_order["items"]=$json_order_items;
+
+					$orderid=$order["id"];
+					error_log("updateOrder orderid=".$orderid." user_id=".$user_id);
+
+					$result=updateOrder($orderid,$json_order,$user_id);
+					$response["update"]=$result["message"];	
+					
+					$order=$db_fabricant->getOrderById($orderid);
+					
+				}
+			
+			}
+			
+			$orderid=$order["id"];
+			
+			if($orderstatus==2 && $order["status"]!=2){
+				$changed_flag=true;
+				error_log("accepting order orderid=".$orderid." user_id=".$user_id);
+				$result=acceptOrder($orderid,$user_id);
+				error_log("accepted");
+				$response["accept"]=$result["message"];				
+				$order=$db_fabricant->getOrderById($orderid);
+			}
+			
+			if($orderstatus==4 && $order["status"]!=4){
+				$changed_flag=true;
+				error_log("removing order orderid=".$orderid." user_id=".$user_id);
+				$result=removeOrder($orderid,$user_id);
+				error_log("removed");
+				$response["remove"]=$result;				
+				$order=$db_fabricant->getOrderById($orderid);
+			}
+			
+			if(!$changed_flag){
+				$response["success"]=1;
+				$response["message"]="No changes in order";
+			}
+
+			error_log("----------------");
+		/*} catch (Exception $e) {
+			error_log($e);
+		}*/
+
+	}
+
+	
+	echoResponse(200, $response);
+});
+
+function createCustomer($name,$address,$phone,$info,$user_id){
+	// creating new contracotor
+	$db = new DbHandlerProfile();
+
+	permissionFabricantAdmin($user_id);
+
+	$status = 0;
+	$type = 1;
+	$new_id = $db->createGroupWeb($name, $address, $phone, $status, $type, $info);
+	$response = array();
+	if ($new_id != NULL) {		
+		$response["error"] = false;
+		$response["message"] = "Customer created successfully";
+		$response["id"] = $new_id;
+		
+		//Console command notify group
+		try{
+			$json_header=array();
+			$json_header["console"]="createCustomer";
+			$json_header["operation"]=M_CONSOLE_OPERATION_GROUP_CHANGED;
+			$json_header["groupid"]=$new_id;
+
+			$console_response=consoleCommand($json_header);
+		}catch(Exception $e){
+			$response['consoleError']=true;
+			$response['consoleErrorMessage'] = "Error:".$e->getMessage();
+		}
+		
+	}else {
+		$response["error"] = true;
+		$response["message"] = "Failed to create customer. Please try again";
+	}
+	
+	return $response;
+}
+
+//--------------------Orders Utils------------------------
+
+function createOrder($json_order,$user_id){
+	
+	$response = array();
+
+	//try{
+	
+		$db_profile = new DbHandlerProfile();
+		$db_fabricant = new DbHandlerFabricant();
+
+		$order=json_decode($json_order,true);
+
+		if(!isset($order["contractorid"]) || !isset($order["customerid"])){
+			throw new Exception("Missing contractorid or customerid in order");
+		}
+
+		checkUserPermissionToGroups($order["contractorid"],$order["customerid"]);
+		
+		$record=makeOrderRecord($order);
+
+		//Customer user info to record
+		$customer_user=$db_profile->getUserById($user_id);
+		$record["customerUserId"]=$user_id;
+		$record["customerUserName"]=$customer_user["name"];
+		$record["customerUserPhone"]=$customer_user["phone"];
+
+		$usercode=$db_profile->getUserCodeInContractorById($user_id,$order["contractorid"]);
+		if(isset($usercode)){
+			$record["customerUserCode"]=$usercode;
+		}
+
+		//Console command
+		$json_header=array();
+		$json_header["console"]="v2/index/orders/create";
+		$json_header["operation"]=M_CONSOLE_OPERATION_ORDER;
+		$json_header["order_operationid"]=M_ORDEROPERATION_CREATE;
+		$json_header["senderid"]=$user_id;
+		$json_header["record"]=json_encode($record,JSON_UNESCAPED_UNICODE);
+		$console_response=consoleCommand($json_header);
+
+		$response['consoleCommand_create_order'] = $console_response["message"];
+
+		$response['error'] = false;
+		$response['message'] = "Order has been created";
+		$response['order'] = $db_fabricant->getOrderById($console_response["orderid"]);
+		$response['success'] = 1;
+
+
+	/*} catch (Exception $e) {
+
+		$response['error'] = true;
+		$response['message'] = $e->getMessage();
+		$response['success'] = 0;
+		$response['make_record_logs'] = "make_record_logs: ".implode (" , ",$record["make_record_logs"]);
+	}*/
+	
+	return $response;
+
+}
 
 function updateOrder($old_order_id,$order,$user_id) {
 
@@ -1462,6 +1905,7 @@ function updateOrder($old_order_id,$order,$user_id) {
 		$old_order_record=json_decode($old_order["record"],JSON_UNESCAPED_UNICODE);
 
 		checkUserPermissionToOrder($old_order_id,$order);
+		check1CSynchronizingPermissions($old_order_id);//Если стоит запрет на изменение заказов импортированных в 1С
 
 		$record=makeOrderRecord($order);
 		$record["id"]=$old_order_id;
@@ -1469,10 +1913,11 @@ function updateOrder($old_order_id,$order,$user_id) {
 		$record["updated"]=true;
 
 		//Customer user info to record
-		$record["customerUserId"]=$old_order_record["customerUserId"];
-		$record["customerUserName"]=$old_order_record["customerUserName"];
-		$record["customerUserPhone"]=$old_order_record["customerUserPhone"];
-
+		if(isset($old_order_record["customerUserId"]))$record["customerUserId"]=$old_order_record["customerUserId"];
+		if(isset($old_order_record["customerUserName"]))$record["customerUserName"]=$old_order_record["customerUserName"];
+		if(isset($old_order_record["customerUserPhone"]))$record["customerUserPhone"]=$old_order_record["customerUserPhone"];
+		if(isset($old_order_record["customerUserCode"]))$record["customerUserCode"]=$old_order_record["customerUserCode"];
+		
 		//Transfer
 		if($record["customerid"]!=$old_order_record["customerid"]){
 			$date_string=date('Y-m-d H:i:s',time());
@@ -1540,6 +1985,9 @@ function acceptOrder($orderid,$user_id) {
 		if($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING){
 			throw new Exception('Order status is not correct for accept operation');
 		}
+		
+		//Если стоит запрет на изменение заказов импортированных в 1С
+		check1CSynchronizingPermissions($orderid);
 
 		$record=json_decode($order["record"],true);
 		$user=$db_profile->getUserById($user_id);
@@ -1574,6 +2022,41 @@ function acceptOrder($orderid,$user_id) {
 	return  $response;
 }
 
+function removeOrder($orderid,$user_id) {
+
+	$db_profile = new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+
+	try{
+
+		$order=$db_fabricant->getOrderById($orderid);
+		
+		$record=json_decode($order["record"],true);
+		$user=$db_profile->getUserById($user_id);
+
+		$record["removeUserId"]=$user_id;
+		$record["removeUserName"]=$user["name"];
+		$record["removeComment"]=$comment;
+		$record["removed"]=true;
+
+		//Console command
+		$json_header=array();
+		$json_header["console"]="v2/index/orders/remove";
+		$json_header["operation"]=M_CONSOLE_OPERATION_ORDER;
+		$json_header["order_operationid"]=M_ORDEROPERATION_REMOVE;
+		$json_header["senderid"]=$user_id;
+		$json_header["record"]=json_encode($record,JSON_UNESCAPED_UNICODE);
+		$console_response=consoleCommand($json_header);
+
+
+
+	} catch (Exception $e) {
+		error_log($e->getMessage());
+	}
+
+	return  $console_response;
+}
+
 function addVisaToOrder($orderid,$user_id) {
 
 	$db_profile = new DbHandlerProfile();
@@ -1586,21 +2069,22 @@ function addVisaToOrder($orderid,$user_id) {
 		$order=$db_fabricant->getOrderById($orderid);
 		$record=json_decode($order["record"],true);
 		$user=$db_profile->getUserById($user_id);
-		
+
 		//Права на установку визы
 		checkVisaPermission($order["contractorid"],$order["customerid"]);
-		
+
 		//Не стоит ли виза уже
 		if(isset($record["visa"])&&($record["visa"]==true)){
 			throw new Exception("Visa already added");
 		}
-		
+
 		//Правильный ли статус заказа для того чтобы ставить визу
 		if($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING){
 			throw new Exception('Order status is not correct to add visa');
 		}
-
 		
+		//Если стоит запрет на изменение заказов импортированных в 1С
+		check1CSynchronizingPermissions($orderid);
 
 		$record["visaAddedUserId"]=$user_id;
 		$record["visaAddedUserName"]=$user["name"];
@@ -1648,18 +2132,20 @@ function removeVisaFromOrder($orderid,$user_id) {
 
 		//Права на установку визы
 		checkVisaPermission($order["contractorid"],$order["customerid"]);
-		
+
 		//Если виза еще не стоит
 		if((!isset($record["visa"]))||($record["visa"]==false)){
 			throw new Exception("Visa is not added yet");
 		}
-		
+
 		//Правильный ли статус заказа для того чтобы ставить визу
 		if($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING){
 			throw new Exception('Order status is not correct to remove visa');
 		}
-
 		
+		//Если стоит запрет на изменение заказов импортированных в 1С
+		check1CSynchronizingPermissions($orderid);
+
 		$record["visaRemovedUserId"]=$user_id;
 		$record["visaRemovedUserName"]=$user["name"];
 		$record["visaRemovedTimestamp"]=time();
@@ -1882,6 +2368,11 @@ function makeOrderRecord($order){
 		$record["customerid"]=$customerid;
 		$record["customerName"]=$customer["name"];
 
+		$customercode=$db_profile->getCustomerCodeInContractorById($customerid,$contractorid);
+		if(isset($customercode)){
+			$record["customercode"]=$customercode;
+		}
+
 		$record["items"]=$basket;
 		$record["costs"]=$costs;
 		$record["totalCost"]=$total_cost;
@@ -1897,8 +2388,8 @@ function makeOrderRecord($order){
 		if(isset($order["comment"])){
 			$record["comment"]=$order["comment"];
 		}
-		
-		
+
+
 		return $record;
 }
 
@@ -1956,10 +2447,66 @@ function checkUserPermissionToOrder($old_order_id,$new_order){
 
 }
 
+/**
+ * Если установлена синхронизация 1С у поставщика
+ * Запрет на изменение заказа после того как заказ был импортирован в 1С
+ */
+function check1CSynchronizingPermissions($orderid){
+		
+		$db_profile = new DbHandlerProfile();
+		$db_fabricant = new DbHandlerFabricant();
+
+		global $user_id;
+		global $mode_1c_synch;
+
+		$order=$db_fabricant->getOrderById($orderid);
+
+		if(!isset($order)){
+			throw new Exception('check1CSynchronizingPermissions orderid is not correct');
+		}
+
+		$contractorid=$order["contractorid"];
+
+		$contractor=$db_profile->getGroupById($contractorid)[0];
+		$contractor_info=json_decode($contractor["info"],true);
+
+		//Если установлена синхронизация 1С у поставщика
+		if( isset($contractor_info["1c_synchronized"]) && $contractor_info["1c_synchronized"] ){
+				
+				//Запрет на изменение заказа после того как заказ был импортирован в 1С
+				if( isset($contractor["code1c"]) && !$mode_1c_synch ){
+					throw new Exception("Order already in 1C and cannot be changed");
+				}
+		}
+
+}
+
+/**
+ * Включена ли синхронизация 1С у поставщика
+ */
+function check1CSynchronizingEnabledInContractor($contractorid,$db_profile){
+	
+	$contractor=$db_profile->getGroupById($contractorid)[0];
+	$contractor_info=(isset($contractor["info"]))?json_decode($contractor["info"],true):null;
+	
+	//Если установлена синхронизация 1С у поставщика
+	if( isset($contractor_info["1c_synchronized"]) && $contractor_info["1c_synchronized"] ){
+		return;
+	}
+
+	$response["error"] = true;
+	$response["message"] = "You have no permission. 1C Synch is not enable for this contarctor";
+	$response["success"] = 0;
+	echoResponse(200, $response);
+
+	global $app;
+	$app->stop();
+}
+
 function checkVisaPermission($contractorid,$customerid) {
 	//Используется для зафиксирования заказа. Например, дать понять поставщику, что заказ одобрен агентом
 	//Визу может ставить Агент или админ поставщика
-	
+
 	$db_profile = new DbHandlerProfile();
 	$db_fabricant = new DbHandlerFabricant();
 
@@ -1967,7 +2514,7 @@ function checkVisaPermission($contractorid,$customerid) {
 
 	$user_status_in_contractor=$db_profile->getUserStatusInGroup($contractorid,$user_id);
 	$user_status_in_customer=$db_profile->getUserStatusInGroup($customerid,$user_id);
-	
+
 	//Если админ в группе поставщика, либо агент в поставщике и одновременно агент или админ в группе заказчика. Иначе выброс исключения
 	if(!(
 		( ($user_status_in_contractor==1)||($user_status_in_contractor==2) ) ||
@@ -1975,7 +2522,7 @@ function checkVisaPermission($contractorid,$customerid) {
 	)){
 		throw new Exception('No permission to visa');
 	}
-	
+
 }
 
 function getProductPriceInstallmentValue($price_name,$product){
@@ -2106,6 +2653,7 @@ function compareDiscountRate($a, $b){
 function compareProductsId($a, $b){
     return ($a['productid'] - $b['productid']);
 }
+
 
 //--------Boolean Functions--------------
 
