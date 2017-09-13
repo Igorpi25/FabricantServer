@@ -1412,7 +1412,9 @@ $app->post('/orders/all/groups', 'authenticate', function() use ($app) {
 //---------------Пакетная обработка-------------
 
 /**
- * Получает информацию о товарах из Excel файла
+ * Пакетная обработка
+ * ЗАМЕНЯЕТ(не обновляет) информацию товаров
+ * Создает если товар не создан. Если передан id, то создает товар с переданным id
  * method POST
  */
 $app->post('/excel_form_products', function() use ($app) {
@@ -1620,6 +1622,218 @@ $app->post('/excel_form_products', function() use ($app) {
 	$response["error"]=false;
 	$response["success"]=1;
 	$response["products"]=$products;
+
+	echoResponse(200,$response);
+
+});
+
+/**
+ * Пакетная обработка
+ * Обновляет только информацию о товарах
+ * method POST
+ */
+$app->post('/excel_form_products_update_info', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+
+	error_log("-------------excel_form_products_kustuk".$_FILES["xls"]["name"]."----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
+
+	$db_profile=new DbHandlerProfile();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+
+
+	//-------------------Берем Excel файл----------------------------
+
+	if (!isset($_FILES["xls"])) {
+		throw new Exception('Param xls is missing');
+	}
+
+	// Check if the file is missing
+	if (!isset($_FILES["xls"]["name"])) {
+		throw new Exception('Property name of xls param is missing');
+	}
+
+	// Check the file size > 100MB
+	if($_FILES["xls"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
+
+	$tmpFile = $_FILES["xls"]["tmp_name"];
+
+	$filename = date('dmY').'-'.uniqid('excel_form_products_kustuk-').".xls";
+	$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+
+	//Считываем закодированный файл xls в строку
+	$data = file_get_contents($tmpFile);
+
+	//Декодируем строку из base64 в нормальный вид
+	//$data = base64_decode($data);
+
+	//Теперь нормальную строку сохраняем в файл
+	$success=false;
+	if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+		@fwrite($fp, $data);
+		@fclose($fp);
+		$success=true;
+	}
+
+	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+	unset($data);
+
+	//Ошибка декодинга
+	if(!$success){
+		throw new Exception('Failed when decoding the recieved file');
+	}
+
+	// Подключаем класс для работы с excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+
+	// Подключаем класс для вывода данных в формате excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
+
+	$objPHPExcel = PHPExcel_IOFactory::load($path);
+
+	// Set and get active sheet
+	$objPHPExcel->setActiveSheetIndex(0);
+	$worksheet = $objPHPExcel->getActiveSheet();
+	$worksheetTitle = $worksheet->getTitle();
+	$highestRow = $worksheet->getHighestRow();
+	$highestColumn = $worksheet->getHighestColumn();
+	$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+	$nrColumns = ord($highestColumn) - 64;
+
+	$db_fabricant = new DbHandlerFabricant();
+
+	$updated_products=array();
+	for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
+		$cells = array();
+
+		for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
+			$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
+			$cells[] = $cell->getValue();
+		}
+
+		$code1c=$cells[0];
+		$id=intval($cells[1]);
+		$name=$cells[2];
+		$price=$cells[3];
+		$group=$cells[4];
+		$summary=$cells[5];
+
+		try{
+			$photos=json_decode($cells[6],true);
+		}catch(Exception $e){
+			$photos=null;
+		}
+
+		try{
+			$units=json_decode($cells[7],true);
+		}catch(Exception $e){
+			$units=null;
+		}
+
+		$product=$db_fabricant->getProductById($id);
+
+		//Если код продукта не существует в контракторе, создаем новый продукт
+		if(!isset($product)){
+			continue;
+		}else{
+			
+			$info=array();
+			
+			if(isset($name)){
+				$product["name"]=$name;
+				
+				$info["name"]=array();
+				$info["name"]["text"]=$name;
+				$info["name_full"]=array();
+				$info["name_full"]["text"]=$name;
+				
+			}
+			
+			if(isset($summary)){				
+				$info["summary"]=array();
+				$info["summary"]["text"]=$summary;
+			}
+			
+			if(isset($price)){
+				$product["price"];
+				
+				$info["price"]=$price;
+			}
+			
+			if(isset($photos)>0){
+		
+				$slides=array();
+
+				foreach($photos as $photo){
+					$slide=array();
+
+					$slide["photo"]=array();
+					$slide["photo"]["image_url"]=URL_HOME.path_products. ltrim(str_replace(trim(" \ "),"/",$photo),"/\ ");
+					$slide["title"]=array();
+					$slide["title"]["text"]="";
+
+					$slides[]=$slide;
+				}
+				
+				if(count($slides)>0){
+				
+					$slider=array();
+					$slider["type"]=2;
+					$slider["slides"]=$slides;									
+					$details=array();
+					$details[]=$slider;
+					
+					$info["details"]=$details;		
+					$info["icon"]=array();
+					$info["icon"]["image_url"]=(count($slides)>0)?$slides[0]["photo"]["image_url"]:"";					
+				}
+				
+				
+			}
+			
+			if(isset($units)){
+				$info["units"]=$units;
+			}
+
+			if(isset($group)){				
+				if(!empty(trim($group))){
+					$info["tags"]=array();
+					$info["tags"][]=$group;
+				}
+			}
+			
+			$db_fabricant->updateProduct($product["id"], $product["name"], $product["price"], json_encode($info,JSON_UNESCAPED_UNICODE), $product["status"]);
+			
+			error_log($rowIndex.". updated id=".$id." price=".$price." group=".$group);			
+			$updated_products[]=$product;
+		}
+
+	}
+
+	$response=array();
+	$response["error"]=false;
+	$response["success"]=1;
+	$response["updated_products"]=$updated_products;
 
 	echoResponse(200,$response);
 
