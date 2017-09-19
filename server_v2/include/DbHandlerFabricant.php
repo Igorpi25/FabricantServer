@@ -335,25 +335,29 @@ class DbHandlerFabricant extends DbHandler{
 
 			$stmt->bind_result($id,$contractorid,$name, $status, $price, $info, $changed_at,$code1c,$article);            
 
-			$stmt->fetch();
-
-			$res= array();
-			$res["id"] = $id;
-			$res["contractorid"] = $contractorid;
-			$res["name"] = $name;
-			$res["status"] = $status;
-			$res["price"] = $price;
-			$res["info"] = $info;
 			
+			if($stmt->fetch()){
 
-			$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
-			$res["changed_at"] = $timestamp_object->getTimestamp();	
+				$res= array();
+				$res["id"] = $id;
+				$res["contractorid"] = $contractorid;
+				$res["name"] = $name;
+				$res["status"] = $status;
+				$res["price"] = $price;
+				$res["info"] = $info;
+				
 
-			$res["code1c"] = $code1c;
-			$res["article"] = $article;
-			
-			$stmt->close();
-			return $res;
+				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+				$res["changed_at"] = $timestamp_object->getTimestamp();	
+
+				$res["code1c"] = $code1c;
+				$res["article"] = $article;
+				
+				$stmt->close();
+				return $res;
+			}else{
+				return NULL;
+			}
 		} else {
 			return NULL;
 		}

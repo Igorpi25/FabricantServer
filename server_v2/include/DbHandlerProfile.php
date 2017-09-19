@@ -1533,9 +1533,10 @@ class DbHandlerProfile extends DbHandler{
 
             $stmt->bind_param("ii", $customerid,$contractorid);
 
-			if($stmt->execute()){
+			$stmt->bind_result($customercode);
 			
-				$stmt->bind_result($customercode);
+			if($stmt->execute() && $stmt->fetch()){
+			
 				
 				return $customercode;
 			}else{
@@ -1545,17 +1546,24 @@ class DbHandlerProfile extends DbHandler{
 	
 	public function getCustomerIdInContractorByCode($customercode,$contractorid) {
 
-            $stmt = $this->conn->prepare("
-			SELECT `customerid` FROM `customer_code_in_contractor` WHERE  `customercode` = ? AND `contractorid` = ? ");
+            $stmt = $this->conn->prepare("SELECT `id`,`customerid`,`customercode`,`contractorid` FROM `customer_code_in_contractor` WHERE  ( `customercode` = '$customercode' ) AND `contractorid` = $contractorid ");
 
-            $stmt->bind_param("si", $customercode,$contractorid);
+            //$stmt->bind_param("i", );
 
-			if($stmt->execute()){
+			$stmt->bind_result($id,$customerid,$_customercode,$_contractorid);
 			
-				$stmt->bind_result($customerid);
+			if($stmt->execute() ){
 				
-				return $customerid;
+				if($stmt->fetch()){
+					
+					error_log("getCustomerIdInContractorByCode id=".$id." customerid=".$customerid." customercode=".$_customercode." contractorid=".$_contractorid);
+					return $customerid;
+				}
+				
+				return NULL;
+				
 			}else{
+				error_log("getCustomerIdInContractorByCode NULL");
 				return NULL;
 			}
     }
@@ -1585,7 +1593,7 @@ class DbHandlerProfile extends DbHandler{
 
             $stmt->bind_param("ii", $userid,$contractorid);
 
-			if($stmt->execute()){
+			if($stmt->execute() && $stmt->fetch()){
 			
 				$stmt->bind_result($usercode);
 				
@@ -1602,7 +1610,7 @@ class DbHandlerProfile extends DbHandler{
 
             $stmt->bind_param("si", $usercode,$contractorid);
 
-			if($stmt->execute()){
+			if($stmt->execute() && $stmt->fetch()){
 			
 				$stmt->bind_result($userid);
 				

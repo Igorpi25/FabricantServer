@@ -1459,84 +1459,67 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 
 	
 
-	if (!isset($_FILES["xls"])) {
-		throw new Exception('Param xls is missing');
+	if (!isset($_FILES["json"])) {
+		throw new Exception('Param json is missing');
 	}
 	//Check if the file is missing
-	if (!isset($_FILES["xls"]["name"])) {
-		throw new Exception('Property name of xls param is missing');
+	if (!isset($_FILES["json"]["name"])) {
+		throw new Exception('Property name of json param is missing');
 	}
 	//Check the file size >100MB
-	if($_FILES["xls"]["size"] > 100*1024*1024) {
+	if($_FILES["json"]["size"] > 100*1024*1024) {
 		throw new Exception('File is too big');
 	}
 
-	$tmpFile = $_FILES["xls"]["tmp_name"];
+	$tmpFile = $_FILES["json"]["tmp_name"];
 
-	$filename = date('dmY').'-'.uniqid('1c_orders_kustuk_pass-').".xls";
+	$filename = date('dmY').'-'.uniqid('1c_orders_kustuk_pass-').".json";
 	$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
 
-	//Считываем закодированный файл xls в строку
+	//Считываем закодированный файл json в строку
 	$data = file_get_contents($tmpFile);
 
 	//Декодируем строку из base64 в нормальный вид
 	$data = base64_decode($data);
-
-	//Теперь нормальную строку сохраняем в файл
-	$success=false;
-	if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
-		@fwrite($fp, $data);
-		@fclose($fp);
-		$success=true;
-	}
+	
+	//Берем данные в массив
+	$incoming_orders = json_decode($data,true);
 
 	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
-	unset($data);
-
-	//Ошибка декодинга
-	if(!$success){
-		throw new Exception('Failed when decoding the recieved file');
-	}
+	
 
 	error_log("-------------1c_orders_kustuk_pass----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
-	// Подключаем класс для работы с excel
-	require_once dirname(__FILE__).'/libs/PHPExcel/PHPExcel.php';
-	// Подключаем класс для вывода данных в формате excel
-	require_once dirname(__FILE__).'/libs/PHPExcel/PHPExcel/IOFactory.php';
-
-	$objPHPExcel = PHPExcel_IOFactory::load($path);
+	error_log("");
+	error_log("data: ".$data);
+	error_log("");
 	
-	error_log("Sheets count: ".$objPHPExcel->getSheetCount());
+	unset($data);
+	
+	error_log("Incoming orders count: ".count($incoming_orders));
 			
-	foreach ($objPHPExcel->getWorksheetIterator() as $worksheet) {
+	foreach ($incoming_orders as $incoming_order) {
 	
 		//try{
 			
-			$worksheetTitle = $worksheet->getTitle();
-			$highestRow = $worksheet->getHighestRow();
 			
-			error_log("worksheetTitle: ".$worksheetTitle);
-			error_log("highestRow: ".($highestRow));
+			$orderid = $incoming_order["orderid"];
+			$ordercode = $incoming_order["ordercode"];
+			$orderdate = $incoming_order["date"];
+			$orderstatus = $incoming_order["status"];
 			
-			$orderid = $worksheet->getCellByColumnAndRow(2, 1)->getValue();
-			$ordercode = $worksheet->getCellByColumnAndRow(2, 2)->getValue();
-			$orderdate = $worksheet->getCellByColumnAndRow(2, 3)->getValue();
-			$orderstatus = $worksheet->getCellByColumnAndRow(2, 4)->getValue();
+			$contragentid = $incoming_order["customerid"];
+			$contragentcode = $incoming_order["customercode"];
+			$contragentname = $incoming_order["customerName"];
+			$contragentaddress = $incoming_order["address"];
+			$contragentphone = $incoming_order["phone"];
 			
-			$contragentid = $worksheet->getCellByColumnAndRow(2, 5)->getValue();
-			$contragentcode = $worksheet->getCellByColumnAndRow(2, 6)->getValue();
-			$contragentname = $worksheet->getCellByColumnAndRow(2, 7)->getValue();
-			$contragentaddress = $worksheet->getCellByColumnAndRow(2, 8)->getValue();
-			$contragentphone = $worksheet->getCellByColumnAndRow(2, 9)->getValue();
+			$userid = $incoming_order["customerUserId"];
+			$usercode = $incoming_order["customerUserCode"];
+			$username = $incoming_order["customerUserName"];
 			
-			$userid = $worksheet->getCellByColumnAndRow(2, 10)->getValue();
-			$usercode = $worksheet->getCellByColumnAndRow(2, 11)->getValue();
-			$username = $worksheet->getCellByColumnAndRow(2, 12)->getValue();
-			$userphone = $worksheet->getCellByColumnAndRow(2, 13)->getValue();
-			
-			$comment = $worksheet->getCellByColumnAndRow(2, 14)->getValue();
+			$comment = $incoming_order["comment"];
 			
 			error_log("orderid: ".$orderid);
 			error_log("ordercode: ".$ordercode);
@@ -1552,7 +1535,6 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 			error_log("userid: ".$userid);
 			error_log("usercode: ".$usercode);
 			error_log("username: ".$username);
-			error_log("userphone: ".$userphone);
 			
 			error_log("comment: ".$comment);
 			
@@ -1563,27 +1545,24 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				continue;
 			}
 			
-			$rows=array();
+			$incoming_order_items=$incoming_order["items"];
 			
+			$rows=array();			
 			error_log("recieved order rows:");
 			
-			for ($rowIndex = 21; $rowIndex <= $highestRow; ++$rowIndex) {
+			foreach ($incoming_order_items as $index=>$incoming_order_item) {
 				$cells = array();
-
-				$code = $worksheet->getCellByColumnAndRow(0, $rowIndex)->getValue();
-				$nomenclature=$worksheet->getCellByColumnAndRow(1, $rowIndex)->getValue();
-				$id = intval($worksheet->getCellByColumnAndRow(2, $rowIndex)->getValue());
-				$price=floatval($worksheet->getCellByColumnAndRow(3, $rowIndex)->getValue());
-				$count = intval($worksheet->getCellByColumnAndRow(4, $rowIndex)->getValue());
-				$amount=floatval($worksheet->getCellByColumnAndRow(5, $rowIndex)->getValue());
-
-
+				$code = $incoming_order_item["code"];
+				$nomenclature=$incoming_order_item["name"];
+				$id = intval($incoming_order_item["id"]);
+				$price=floatval($incoming_order_item["price"]);
+				$count = intval($incoming_order_item["count"]);
+				$amount=floatval($incoming_order_item["amount"]);
+				
 				$product=$db_fabricant->getProductByCode($contractorid,$code);
-
 				//Если код продукта не существует, то пропускаем этот продукт
 				if(!isset($product)){
-					error_log("Product code=".$code." rowIndex=".$rowIndex." not found");
-
+					error_log("Product code=".$code." index=".($index+1)." not found");
 					$row=array();
 					$row["code"]=$code;
 					$row["productid"]=-1;
@@ -1592,7 +1571,6 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 					$row["count"]=$count;
 					$row["amount"]=$amount; 
 				}else{
-
 					$row=array();
 					$row["code"]=$code;
 					$row["productid"]=$product["id"];
@@ -1601,10 +1579,7 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 					$row["count"]=$count;
 					$row["amount"]=$amount;
 				}
-
-
-				error_log(($rowIndex-12)."). code=".$row["code"]." productid=".$row["productid"]." price=".$row["price"]." count=".$row["count"]." amount=".$row["amount"]);
-
+				error_log(($index+1)."). code=".$row["code"]." productid=".$row["productid"]." price=".$row["price"]." count=".$row["count"]." amount=".$row["amount"]);
 				$rows[]=$row;
 			}
 			
@@ -1645,20 +1620,18 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				$json_order["customerid"]=$customerid;
 				$json_order["phone"]=$phone;
 				$json_order["comment"]=$comment;
-
 				$json_order_items=array();
 				foreach($rows as $row){
 					$json_order_items["".$row["productid"]]=$row["count"];
 				}				
 				$json_order["items"]=$json_order_items;
-
 				error_log("creating order user_id=".$user_id." phone=".$phone." contractorid=".$contractorid." customerid=".$customerid);
-				$create_order_response=createOrder($json_order,$user_id);
+				$create_order_response=createOrder(json_encode($json_order,JSON_UNESCAPED_UNICODE),$user_id);
 				error_log("created");
 				
 				$order=$create_order_response['order'];
 			
-			}else{		
+			}else{
 			
 				//Если заказ существует, то обновляем данные
 				
@@ -1666,22 +1639,17 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				$items=$record["items"];
 				
 				if(!isset($items))$items=array();
-
 				error_log("existing order items:");
-
 				foreach($items as $key=>$item){
 					$item["code"]=$db_fabricant->getProductCodeById($item["productid"]);
 					error_log(($key+1)."). code=".$item["code"]." productid=".$item["productid"]." price=".$item["price"]." count=".$item["count"]." amount=".$item["amount"]);
 				}
-
 				$added_items=array_udiff($rows,$items,"order_item_id_compare");
 				$deleted_items=array_udiff($items,$rows,"order_item_id_compare");
-
 				$rows_intersect=array_uintersect($rows,$items,"order_item_id_compare");
 				$items_intersect=array_uintersect($items,$rows,"order_item_id_compare");
 				
 				$changed_items=array();
-
 				foreach($rows_intersect as $a){				
 					$found=false;				
 					foreach($items_intersect as $b){
@@ -1694,7 +1662,6 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				}
 				
 				$update_flag=false;
-
 				if(count($added_items)>0){
 					$update_flag=true;
 					error_log(count($added_items)." items added");
@@ -1704,7 +1671,6 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				}else{
 					error_log("No items added");
 				}
-
 				if(count($deleted_items)){
 					$update_flag=true;
 					error_log(count($deleted_items)." items deleted");
@@ -1714,7 +1680,6 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				}else{
 					error_log("No items deleted");
 				}
-
 				if(count($changed_items)){
 					$update_flag=true;
 					error_log(count($changed_items)." items changed");
@@ -1739,17 +1704,14 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 					$json_order["customerid"]=$order["customerid"];
 					$json_order["phone"]=$record["phone"];
 					$json_order["comment"]=$comment;
-
 					$json_order_items=array();
 					foreach($rows as $row){
 						$json_order_items["".$row["productid"]]=$row["count"];
 					}
 					
 					$json_order["items"]=$json_order_items;
-
 					$orderid=$order["id"];
 					error_log("updateOrder orderid=".$orderid." user_id=".$user_id);
-
 					$result=updateOrder($orderid,$json_order,$user_id);
 					$response["update"]=$result["message"];	
 					
@@ -1783,14 +1745,11 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				$response["success"]=1;
 				$response["message"]="No changes in order";
 			}
-
 			error_log("----------------");
 		/*} catch (Exception $e) {
 			error_log($e);
 		}*/
-
 	}
-
 	
 	echoResponse(200, $response);
 });
@@ -1801,7 +1760,7 @@ function createCustomer($name,$address,$phone,$info,$user_id){
 
 	permissionFabricantAdmin($user_id);
 
-	$status = 0;
+	$status = 1;
 	$type = 1;
 	$new_id = $db->createGroupWeb($name, $address, $phone, $status, $type, $info);
 	$response = array();

@@ -1138,7 +1138,7 @@ function createCustomer($name,$address,$phone,$info,$user_id){
 
 	permissionFabricantAdmin($user_id);
 
-	$status = 0;
+	$status = 1;
 	$type = 1;
 	$new_id = $db->createGroupWeb($name, $address, $phone, $status, $type, $info);
 	$response = array();
@@ -2836,7 +2836,7 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_products_kustuk".$_FILES["xls"]["name"]."----------------");
+	error_log("-------------1c_products_kustuk".$_FILES["json"]["name"]."----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -2856,86 +2856,54 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 
 	//try{
 
-		if (!isset($_FILES["xls"])) {
-			throw new Exception('Param xls is missing');
+		if (!isset($_FILES["json"])) {
+			throw new Exception('Param json is missing');
 		}
 		// Check if the file is missing
-		if (!isset($_FILES["xls"]["name"])) {
-			throw new Exception('Property name of xls param is missing');
+		if (!isset($_FILES["json"]["name"])) {
+			throw new Exception('Property name of json param is missing');
 		}
 		// Check the file size >100MB
-		if($_FILES["xls"]["size"] > 100*1024*1024) {
+		if($_FILES["json"]["size"] > 100*1024*1024) {
 			throw new Exception('File is too big');
 		}
 
-		$tmpFile = $_FILES["xls"]["tmp_name"];
+		$tmpFile = $_FILES["json"]["tmp_name"];
 
-		$filename = date('dmY').'-'.uniqid('1c_products_kustuk-').".xls";
+		$filename = date('dmY').'-'.uniqid('1c_products_kustuk-').".json";
 		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
 
-		//Считываем закодированный файл xls в строку
+		//Считываем закодированный файл json в строку
 		$data = file_get_contents($tmpFile);
 		//Декодируем строку из base64 в нормальный вид
 		$data = base64_decode($data);
-
-		//Теперь нормальную строку сохраняем в файл
-		$success=false;
-		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
-            @fwrite($fp, $data);
-            @fclose($fp);
-			$success=true;
-        }
+		
+		$incoming_products = json_decode($data,true);	
         //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
 		unset($data);
-
-		//ошибка декодинга
-		if(!$success){
-			throw new Exception('Failed when decoding the recieved file');
-		}
-
-		// Подключаем класс для работы с excel
-		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
-		// Подключаем класс для вывода данных в формате excel
-		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
-
-		$objPHPExcel = PHPExcel_IOFactory::load($path);
-		// Set and get active sheet
-		$objPHPExcel->setActiveSheetIndex(0);
-		$worksheet = $objPHPExcel->getActiveSheet();
-		$worksheetTitle = $worksheet->getTitle();
-		$highestRow = $worksheet->getHighestRow();
-		$highestColumn = $worksheet->getHighestColumn();
-		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
-		$nrColumns = ord($highestColumn) - 64;
-
-
+		
 		$db_fabricant = new DbHandlerFabricant();
-
-
-		$count_of_products=0;
 
 		$changed_products=array();
 		$created_products=array();
 		$not_changed_products=array();
 
 		$products=array();
+		
+		$count_of_products=0;
+		
+		error_log("incoming_products count=".count($incoming_products));
 
-		for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
-			$cells = array();
-
+		foreach ($incoming_products as $incoming_product) {
+		
 			$count_of_products++;
-
-			for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
-				$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
-				$cells[] = $cell->getValue();
-			}
-
-			$code=$cells[0];
-			$nomenclature=$cells[1];
-			$name_full=$cells[2];
-			$price=$cells[3];
-			$article=$cells[4];
-			$units_pairs_string=$cells[5];
+		
+			$code=$incoming_product["code"];
+			$nomenclature=$incoming_product["name"];
+			$name_full=$incoming_product["name_full"];
+			$price=$incoming_product["price"];
+			$article=$incoming_product["article"];
+			//$units_pairs_string=$incoming_product["units"];
 
 			//Если столбцы не указаны
 			if(!isset($code))$code=null;
@@ -2943,10 +2911,10 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 			if(!isset($name_full))$name_full=null;
 			if(!isset($price))$price=0;
 			if(!isset($article))$article=null;
-			if(!isset($units_pairs_string))$units_pairs_string=null;
+			//if(!isset($units_pairs_string))$units_pairs_string=null;
 
 			//Превращаем юниты в массив
-			$info_units=makeUnitsFromString($units_pairs_string);
+			//$info_units=makeUnitsFromString($units_pairs_string);
 
 			$product=$db_fabricant->getProductByCode($contractorid,$code);
 
@@ -2971,11 +2939,13 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 				  'price' => $price
 				);
 
-				if(count($info_units)>0)$product["info"]["units"]=$info_units;
+				//if(count($info_units)>0)$product["info"]["units"]=$info_units;
 
 				$product["status"]=1;
 
 				$created_products[]=$product;
+				
+				//error_log($count_of_products.". code=".$code." price=".$price." article=".$article." created");
 			}else{
 
 				$changed_flag=false;//Нужен в конце чтобы определить нужно ли обновить товар
@@ -3022,7 +2992,7 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 				}
 
 				//Проверка юнитов, сравнение идет только по полям value и label
-				$units_changed_flag=false;
+				/*$units_changed_flag=false;
 				try{
 
 					//Проверка на совпадение количества юнитов
@@ -3059,7 +3029,7 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 						throw $e;//Значит настоящая ошибка мы выводим ее наружу
 					}
 
-				}
+				}*/
 
 				//Продукт минимум в одном месте изменен, тогда меняем продукт на новый
 				if($changed_flag){
@@ -3068,15 +3038,20 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 					$product["changed_reason"]=$changed_reason;
 
 					$changed_products[]=$product;
+					
+					//error_log($count_of_products.". code=".$code." price=".$price." article=".$article." changed");
 				}else{
 					//Продукт существует и не изменен
 					$not_changed_products[]=$product;
+					
+					//error_log($count_of_products.". code=".$code." price=".$price." article=".$article);
 				}
-
+				
+				
 
 			}
 
-			error_log($count_of_products.". code=".$code." price=".$price." article=".$article." units=".$units_pairs_string);
+			
 
 		}
 		error_log(" ");
@@ -3101,7 +3076,7 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 			foreach($created_products as $product){
 				$index++;
 				$product["id"]=$db_fabricant->createProduct($product["contractorid"], $product["name"], $product["price"], json_encode($product["info"],JSON_UNESCAPED_UNICODE), $product["status"], $product["code1c"]);
-				error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']." article=".$product['article']);
+				//error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']." article=".$product['article']);
 				
 			}
 
@@ -3120,7 +3095,7 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 					$db_fabricant->updateProductArticle($product["id"], $product["article"]);
 				}
 
-				error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']." article=".$product['article']." changed_reason:[ ".$product['changed_reason']." ]");//.(isset($product['info'])&&isset($product['info']['units']))?" units=".count($product['info']['units']));
+				//error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']." article=".$product['article']." changed_reason:[ ".$product['changed_reason']." ]");//.(isset($product['info'])&&isset($product['info']['units']))?" units=".count($product['info']['units']));
 			}
 
 		}
@@ -3132,7 +3107,7 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 			foreach($not_changed_products as $product){
 				$index++;
 				if(isset($product["article"]))$product['article']="missing";
-				error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']);//." article=".$product['article']);//.(isset($product['info'])&&isset($product['info']['units']))?" units=".count($product['info']['units']));
+				//error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']);//." article=".$product['article']);//.(isset($product['info'])&&isset($product['info']['units']))?" units=".count($product['info']['units']));
 			}
 
 		}
@@ -3143,7 +3118,6 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 			consoleCommandNotifyProducts($merged_products);
 		}
 
-
 	//} catch (Exception $e) {
 		// Exception occurred. Make error flag true
 		//$response["error"] = true;
@@ -3151,9 +3125,10 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 		//$response["success"] = 0;
 		//$response = $e->getMessage();
 	//}
+	
 		$response["error"] = false;
 		$response["message"] = "Import successfully done";
-		$response["success"] = 0;
+		$response["success"] = 1;
 
 		echoResponse(200, $response);
 });
@@ -3172,7 +3147,7 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_products_rest_kustuk".$_FILES["xls"]["name"]."----------------");
+	error_log("-------------1c_products_rest_kustuk".$_FILES["json"]["name"]."----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -3189,60 +3164,34 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 	$user=$db_profile->getUserByPhone($phone);
 	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
 
-
 	//try{
 
-		if (!isset($_FILES["xls"])) {
-			throw new Exception('Param xls is missing');
+		if (!isset($_FILES["json"])) {
+			throw new Exception('Param json is missing');
 		}
 		// Check if the file is missing
-		if (!isset($_FILES["xls"]["name"])) {
-			throw new Exception('Property name of xls param is missing');
+		if (!isset($_FILES["json"]["name"])) {
+			throw new Exception('Property name of json param is missing');
 		}
 		// Check the file size >100MB
-		if($_FILES["xls"]["size"] > 100*1024*1024) {
+		if($_FILES["json"]["size"] > 100*1024*1024) {
 			throw new Exception('File is too big');
 		}
 
-		$tmpFile = $_FILES["xls"]["tmp_name"];
+		$tmpFile = $_FILES["json"]["tmp_name"];
 
-		$filename = date('dmY').'-'.uniqid('1c_products_rest_kustuk-').".xls";
+		$filename = date('dmY').'-'.uniqid('1c_products_rest_kustuk-').".json";
 		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
 
-		//Считываем закодированный файл xls в строку
+		//Считываем закодированный файл json в строку
 		$data = file_get_contents($tmpFile);
 		//Декодируем строку из base64 в нормальный вид
 		$data = base64_decode($data);
 
-		//Теперь нормальную строку сохраняем в файл
-		$success=false;
-		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
-            @fwrite($fp, $data);
-            @fclose($fp);
-			$success=true;
-        }
+		$incoming_products = json_decode($data,true);
+		
         //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
 		unset($data);
-
-		//ошибка декодинга
-		if(!$success){
-			throw new Exception('Failed when decoding the recieved file');
-		}
-
-		// Подключаем класс для работы с excel
-		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
-		// Подключаем класс для вывода данных в формате excel
-		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
-
-		$objPHPExcel = PHPExcel_IOFactory::load($path);
-		// Set and get active sheet
-		$objPHPExcel->setActiveSheetIndex(0);
-		$worksheet = $objPHPExcel->getActiveSheet();
-		$worksheetTitle = $worksheet->getTitle();
-		$highestRow = $worksheet->getHighestRow();
-		$highestColumn = $worksheet->getHighestColumn();
-		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
-		$nrColumns = ord($highestColumn) - 64;
 
 
 		$db_fabricant = new DbHandlerFabricant();
@@ -3257,18 +3206,12 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 		
 		$changed_products=array();
 
-		for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
-			$cells = array();
-
+		foreach ($incoming_products as $incoming_product) {
+		
 			$count_of_products++;
-
-			for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
-				$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
-				$cells[] = $cell->getValue();
-			}
-
-			$code=$cells[0];
-			$rest=$cells[1];
+		
+			$code=$incoming_product["code"];
+			$rest=$incoming_product["rest"];
 
 			$product=$db_fabricant->getProductByCode($contractorid,$code);
 
@@ -3329,6 +3272,7 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 		//$response["success"] = 0;
 		//$response = $e->getMessage();
 	//}
+	
 		$response["error"] = false;
 		$response["message"] = "Import successfully done";
 		$response["success"] = 0;
@@ -3391,21 +3335,13 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 	$orders=$db_fabricant->getOrdersDeltaOfContractor($contractorid,$last_timestamp);
 	error_log("orders count: ".count($orders));
 	
-	// Подключаем класс для работы с excel
-	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
-	// Подключаем класс для вывода данных в формате excel
-	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/Writer/Excel5.php';
-
-	// New PHPExcel class
-	$xls = new PHPExcel();
-
-	$sheet_index = 0;
+	$outgoing_orders=array();
+	
 	foreach($orders as $order){
 	
 		$record=json_decode($order["record"],true);
 		
 		error_log("");
-		error_log("sheet_index: ".$sheet_index);
 		error_log("orderid: ".$order["id"]);
 		error_log("status: ".$order["status"]);
 		error_log("code1c: ".$order["code1c"]);
@@ -3424,136 +3360,72 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 			continue;
 		}
 		
-		//Создание нового листа, первый создается по умолчанию
-		if($sheet_index > 0){
-			$xls->createSheet();
-		}
-
-		//Заголовок листа
-		$sheet = $xls->setActiveSheetIndex($sheet_index);
-		$sheet->setTitle('Заказ_'.$order["id"]);
-
-		//Заполнение шапки
-		$sheet->setCellValue("B1", 'ID заказа');
-		$sheet->setCellValue("C1", $order["id"]);
-
-		//Заполнение шапки
-		$sheet->setCellValue("B2", 'Код заказа');
-		if(isset($order["code1c"])){
-			$sheet->setCellValue("C2", $order["code1c"]);
-		}
-
-		$sheet->setCellValue("B3", 'Дата');
-		$sheet->setCellValue("C3", date('Y.m.d H:i:s',$order["created_at"]));
-
-		$sheet->setCellValue("B4", 'Статус заказа');
-		$sheet->setCellValue("C4", $order["status"]);
-
-			//id contraagent b5
-
-		$sheet->setCellValue("B5", 'ID контрагента');
-		$sheet->setCellValue("C5", $order["customerid"]);
-
-		$sheet->setCellValue("B6", 'Код контрагента');
+		$outgoing_order = array();
+		$outgoing_order["orderid"]=$order["id"];		
+		$outgoing_order["ordercode"]=$order["code1c"];
+		$outgoing_order["date"]=date('Y-m-d H:i:s',$order["created_at"]);
+		$outgoing_order["status"]=$order["status"];
+		
+		$outgoing_order["customerid"]=$order["customerid"];
 		if(isset($record["customercode"])){
-			error_log("customercode: ".$record["customercode"]);
-			$sheet->setCellValue("C6", $record["customercode"]);
-		}
-		
-		$sheet->setCellValue("B7", 'Адрес контрагента');
-		if(isset($record["address"])){
-			error_log("address: ".$record["address"]);
-			$sheet->setCellValue("C7", $record["address"]);
-		}
-		
-		$sheet->setCellValue("B8", 'Телефон контрагента');
-		if(isset($record["phone"])){
-			error_log("address: ".$record["phone"]);
-			$sheet->setCellValue("C8", $record["phone"]);
-		}
-
-		$sheet->setCellValue("B9", 'Имя контрагента');
-		$sheet->setCellValue("C9", $record["customerName"]);
-
-		$sheet->setCellValue("B10", 'ID ответственного лица');
-		$sheet->setCellValue("C10", $record["customerUserId"]);
-
-		$sheet->setCellValue("B11", 'Код ответственного лица');
-		if(isset($record["customerUserCode"])){
-			$sheet->setCellValue("C11", $record["customerUserCode"]);
-		}
-
-		$sheet->setCellValue("B12", 'Имя ответственного лица');
-		$sheet->setCellValue("C12", $record["customerUserName"]);
-
-		$sheet->setCellValue("B13", 'Телефон ответственного лица');
-		if(isset($record["customerUserPhone"])){
-			error_log("address: ".$record["customerUserPhone"]);
-			$sheet->setCellValue("C13", $record["customerUserPhone"]);
-		}
-		
-		$sheet->setCellValue("B14", 'Комментарий');
-		if(isset($record["comment"])){
-			$sheet->setCellValue("C14", "Фабрикант:".$record["comment"]);
+			$outgoing_order["customercode"]=$record["customercode"];
 		}else{
-			$sheet->setCellValue("C14", "Фабрикант");
+			$outgoing_order["customercode"]=null;
 		}
-
-		$row_index=21;
-
-		//Ставим заголовки таблицы
-		$sheet->setCellValue("A$row_index", 'Код');
-		$sheet->getColumnDimension('A')->setAutoSize(true);
-		$sheet->setCellValue("B$row_index", 'Наименование');
-		$sheet->getColumnDimension('B')->setAutoSize(true);
-		$sheet->setCellValue("C$row_index", 'ID');
-		$sheet->getColumnDimension('C')->setAutoSize(true);
-		$sheet->setCellValue("D$row_index", 'Цена');
-		$sheet->getColumnDimension('D')->setAutoSize(true);
-		$sheet->setCellValue("E$row_index", 'Количество');
-		$sheet->getColumnDimension('E')->setAutoSize(true);
-		$sheet->setCellValue("F$row_index", 'Сумма');
-		$sheet->getColumnDimension('F')->setAutoSize(true);
-
+		$outgoing_order["customerName"]=$record["customerName"];
+		
+		$outgoing_order["customerUserId"]=$record["customerUserId"];
+		if(isset($record["customerUserCode"])){
+			$outgoing_order["customerUserCode"]=$record["customerUserCode"];
+		}else{
+			$outgoing_order["customerUserCode"]=null;
+		}
+		$outgoing_order["customerUserName"]=$record["customerUserName"];
+		
+		if(isset($record["address"])){
+			$outgoing_order["address"]=$record["address"];
+		}else{
+			$outgoing_order["address"]=null;
+		}
+		
+		if(isset($record["phone"])){
+			$outgoing_order["phone"]=$record["phone"];
+		}else{
+			$outgoing_order["phone"]=null;
+		}
+		
+		if(isset($record["comment"])){
+			$outgoing_order["comment"]="Фабрикант: ".$record["comment"];
+		}else{
+			$outgoing_order["comment"]="Фабрикант";
+		}
+		
+		$outgoing_items=array();
+		
 		foreach ($record["items"] as $item) {
 
-			$tmp = array();
+			$outgoing_item = array();
 
-			$tmp["id"]=$item["productid"];
-			$tmp["code"] = $db_fabricant->getProductCodeById($item["productid"]);
-			$tmp["name"] = $item["name"];
-			$tmp["count"] = $item["count"];
+			$outgoing_item["id"]=$item["productid"];
+			$outgoing_item["code"] = $db_fabricant->getProductCodeById($item["productid"]);
+			$outgoing_item["name"] = $item["name"];
+			$outgoing_item["count"] = $item["count"];
 			if (isset($item["sale"]) && !empty($item["sale"]) && isset($item["sale"]["price_with_sale"]) && !empty($item["sale"]["price_with_sale"]))
-				$tmp["price"] = $item["sale"]["price_with_sale"];
+				$outgoing_item["price"] = $item["sale"]["price_with_sale"];
 			else
-				$tmp["price"] = $item["price"];
+				$outgoing_item["price"] = $item["price"];
 
-			$tmp["amount"] = $item["amount"];
+			$outgoing_item["amount"] = $item["amount"];
 
-			$row_index++;
-
-			$sheet->setCellValue("A$row_index", $tmp["code"]);
-			$sheet->setCellValue("B$row_index", $tmp["name"]);
-			$sheet->setCellValue("C$row_index", $tmp["id"]);
-			$sheet->setCellValue("D$row_index", $tmp["price"]);
-			$sheet->setCellValue("E$row_index", $tmp["count"]);
-			$sheet->setCellValue("F$row_index", $tmp["amount"]);
+			$outgoing_items[]=$outgoing_item;
 		}
-
-		$sheet_index++;
+		
+		$outgoing_order["items"]=$outgoing_items;
+		$outgoing_orders[]=$outgoing_order;
+		
 	}
 
-	// Выводим HTTP-заголовки
-	 header ( "Expires: Mon, 1 Apr 1974 05:00:00 GMT" );
-	 header ( "Last-Modified: " . gmdate("D,d M YH:i:s") . " GMT" );
-	 header ( "Cache-Control: no-cache, must-revalidate" );
-	 header ( "Pragma: no-cache" );
-	 header ( "Content-type: application/vnd.ms-excel" );
-	 header ( "Content-Disposition: attachment; filename=matrix.xls" );
-
-	// Выводим содержимое файла
-	 $objWriter = new PHPExcel_Writer_Excel5($xls);
-	 $objWriter->save('php://output');
+	echoResponse(200, $outgoing_orders);
 
 });
 
@@ -3571,7 +3443,7 @@ $app->post('/1c_orders_created_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_orders_created_kustuk".$_FILES["xls"]["name"]."----------------");
+	error_log("-------------1c_orders_created_kustuk".$_FILES["json"]["name"]."----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -3597,71 +3469,41 @@ $app->post('/1c_orders_created_kustuk', function() use ($app) {
 
 	//try{
 
-		if (!isset($_FILES["xls"])) {
-			throw new Exception('Param xls is missing');
+		if (!isset($_FILES["json"])) {
+			throw new Exception('Param json is missing');
 		}
 		// Check if the file is missing
-		if (!isset($_FILES["xls"]["name"])) {
-			throw new Exception('Property name of xls param is missing');
+		if (!isset($_FILES["json"]["name"])) {
+			throw new Exception('Property name of json param is missing');
 		}
 		// Check the file size >100MB
-		if($_FILES["xls"]["size"] > 100*1024*1024) {
+		if($_FILES["json"]["size"] > 100*1024*1024) {
 			throw new Exception('File is too big');
 		}
 
-		$tmpFile = $_FILES["xls"]["tmp_name"];
+		$tmpFile = $_FILES["json"]["tmp_name"];
 
-		$filename = date('dmY').'-'.uniqid('1c_orders_created_kustuk-').".xls";
+		$filename = date('dmY').'-'.uniqid('1c_orders_created_kustuk-').".json";
 		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
 
-		//Считываем закодированный файл xls в строку
+		//Считываем закодированный файл json в строку
 		$data = file_get_contents($tmpFile);
 		//Декодируем строку из base64 в нормальный вид
 		$data = base64_decode($data);
+		
+		$incoming_orders = json_decode($data,true);
 
-		//Теперь нормальную строку сохраняем в файл
-		$success=false;
-		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
-            @fwrite($fp, $data);
-            @fclose($fp);
-			$success=true;
-        }
         //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
 		unset($data);
 
-		//ошибка декодинга
-		if(!$success){
-			throw new Exception('Failed when decoding the recieved file');
-		}
-
-		// Подключаем класс для работы с excel
-		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
-		// Подключаем класс для вывода данных в формате excel
-		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
-
-		$objPHPExcel = PHPExcel_IOFactory::load($path);
-		// Set and get active sheet
-		$objPHPExcel->setActiveSheetIndex(0);
-		$worksheet = $objPHPExcel->getActiveSheet();
-		$worksheetTitle = $worksheet->getTitle();
-		$highestRow = $worksheet->getHighestRow();
-		$highestColumn = $worksheet->getHighestColumn();
-		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
-		$nrColumns = ord($highestColumn) - 64;
-
-		for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
-			$cells = array();
+		
+		foreach ($incoming_orders as $incoming_order) {
 
 			$count_of_braches++;
-
-			for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
-				$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
-				$cells[] = $cell->getValue();
-			}
-
-			$id=$cells[0];
-			$code=$cells[1];
-			$date=$cells[2];
+			
+			$id=$incoming_order["id"];
+			$code=$incoming_order["code"];
+			$date=$incoming_order["date"];
 
 			$db_fabricant->updateOrderCode($id, $code);
 
@@ -3704,7 +3546,7 @@ $app->post('/1c_contragents_created_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_contragents_created_kustuk".$_FILES["xls"]["name"]."----------------");
+	error_log("-------------1c_contragents_created_kustuk".$_FILES["json"]["name"]."----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -3736,76 +3578,46 @@ $app->post('/1c_contragents_created_kustuk', function() use ($app) {
 
 	//try{
 
-		if (!isset($_FILES["xls"])) {
-			throw new Exception('Param xls is missing');
+		if (!isset($_FILES["json"])) {
+			throw new Exception('Param json is missing');
 		}
 		// Check if the file is missing
-		if (!isset($_FILES["xls"]["name"])) {
-			throw new Exception('Property name of xls param is missing');
+		if (!isset($_FILES["json"]["name"])) {
+			throw new Exception('Property name of json param is missing');
 		}
 		// Check the file size >100MB
-		if($_FILES["xls"]["size"] > 100*1024*1024) {
+		if($_FILES["json"]["size"] > 100*1024*1024) {
 			throw new Exception('File is too big');
 		}
 
-		$tmpFile = $_FILES["xls"]["tmp_name"];
+		$tmpFile = $_FILES["json"]["tmp_name"];
 
-		$filename = date('dmY').'-'.uniqid('1c_contragents_created_kustuk-').".xls";
+		$filename = date('dmY').'-'.uniqid('1c_contragents_created_kustuk-').".json";
 		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
 
-		//Считываем закодированный файл xls в строку
+		//Считываем закодированный файл json в строку
 		$data = file_get_contents($tmpFile);
 		//Декодируем строку из base64 в нормальный вид
 		$data = base64_decode($data);
+		
+		$incoming_contragents=json_decode($data,true);
 
-		//Теперь нормальную строку сохраняем в файл
-		$success=false;
-		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
-            @fwrite($fp, $data);
-            @fclose($fp);
-			$success=true;
-        }
         //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
 		unset($data);
 
-		//ошибка декодинга
-		if(!$success){
-			throw new Exception('Failed when decoding the recieved file');
-		}
+		$count_of_braches=0;
 
-		// Подключаем класс для работы с excel
-		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
-		// Подключаем класс для вывода данных в формате excel
-		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
-
-		$objPHPExcel = PHPExcel_IOFactory::load($path);
-		// Set and get active sheet
-		$objPHPExcel->setActiveSheetIndex(0);
-		$worksheet = $objPHPExcel->getActiveSheet();
-		$worksheetTitle = $worksheet->getTitle();
-		$highestRow = $worksheet->getHighestRow();
-		$highestColumn = $worksheet->getHighestColumn();
-		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
-		$nrColumns = ord($highestColumn) - 64;
-
-		for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
-			$cells = array();
-
-			$count_of_braches++;
-
-			for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
-				$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
-				$cells[] = $cell->getValue();
-			}
-
-			$contragentid=$cells[0];
-			$contragentcode=$cells[1];
-			$contragentname=$cells[2];
-			$contragentuid=$cells[3];
-			$contragentphone=$cells[4];
-			$contragentaddress=$cells[5];
+		foreach ($incoming_contragents as $incoming_contragent) {
 			
-			error_log($count_of_braches.". id=".$contragentid." code=".$contragentcode." uid=".$contragentuid." phone=".$contragentphone);
+			$count_of_braches++;
+			
+			$contragentid=$incoming_contragent["id"];
+			$contragentcode=$incoming_contragent["code"];
+			$contragentname=$incoming_contragent["name"];
+			$contragentphone=$incoming_contragent["phone"];
+			$contragentaddress=$incoming_contragent["address"];
+			
+			error_log($count_of_braches.". id=".$contragentid." code=".$contragentcode." phone=".$contragentphone);
 
 			if( !isset($contragentid) && isset($contragentcode) ){
 				
@@ -3865,7 +3677,7 @@ $app->post('/1c_users_created_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_users_created_kustuk".$_FILES["xls"]["name"]."----------------");
+	error_log("-------------1c_users_created_kustuk".$_FILES["json"]["name"]."----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -3892,76 +3704,47 @@ $app->post('/1c_users_created_kustuk', function() use ($app) {
 
 	//try{
 
-		if (!isset($_FILES["xls"])) {
-			throw new Exception('Param xls is missing');
+		if (!isset($_FILES["json"])) {
+			throw new Exception('Param json is missing');
 		}
 		// Check if the file is missing
-		if (!isset($_FILES["xls"]["name"])) {
-			throw new Exception('Property name of xls param is missing');
+		if (!isset($_FILES["json"]["name"])) {
+			throw new Exception('Property name of json param is missing');
 		}
 		// Check the file size >100MB
-		if($_FILES["xls"]["size"] > 100*1024*1024) {
+		if($_FILES["json"]["size"] > 100*1024*1024) {
 			throw new Exception('File is too big');
 		}
 
-		$tmpFile = $_FILES["xls"]["tmp_name"];
+		$tmpFile = $_FILES["json"]["tmp_name"];
 
-		$filename = date('dmY').'-'.uniqid('1c_users_created_kustuk-').".xls";
+		$filename = date('dmY').'-'.uniqid('1c_users_created_kustuk-').".json";
 		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
 
-		//Считываем закодированный файл xls в строку
+		//Считываем закодированный файл json в строку
 		$data = file_get_contents($tmpFile);
 		//Декодируем строку из base64 в нормальный вид
 		$data = base64_decode($data);
+		
+		$incoming_users = json_decode($data,true);
 
-		//Теперь нормальную строку сохраняем в файл
-		$success=false;
-		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
-            @fwrite($fp, $data);
-            @fclose($fp);
-			$success=true;
-        }
         //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
 		unset($data);
 
-		//ошибка декодинга
-		if(!$success){
-			throw new Exception('Failed when decoding the recieved file');
-		}
+		$count_of_braches=0;
 
-		// Подключаем класс для работы с excel
-		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
-		// Подключаем класс для вывода данных в формате excel
-		require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
-
-		$objPHPExcel = PHPExcel_IOFactory::load($path);
-		// Set and get active sheet
-		$objPHPExcel->setActiveSheetIndex(0);
-		$worksheet = $objPHPExcel->getActiveSheet();
-		$worksheetTitle = $worksheet->getTitle();
-		$highestRow = $worksheet->getHighestRow();
-		$highestColumn = $worksheet->getHighestColumn();
-		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
-		$nrColumns = ord($highestColumn) - 64;
-
-		for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
-			$cells = array();
-
+		foreach ($incoming_users as $incoming_user) {
+			
 			$count_of_braches++;
-
-			for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
-				$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
-				$cells[] = $cell->getValue();
-			}
-
-			$id=$cells[0];
-			$code=$cells[1];
-			$date=$cells[2];
-
+			
+			$id=$incoming_user["id"];
+			$code=$incoming_user["code"];
+			$name=$incoming_user["name"];
+			
 			//Добавляем новую запись в code_in_contractor, в info пользователя
 			$db_profile->setUserCodeInContractor($id, $code,$contractorid);
 
-			error_log($count_of_braches.". id=".$id." code=".$code." date=".$date);
+			error_log($count_of_braches.". id=".$id." code=".$code." name=".$name);
 			
 		}
 		error_log(" ");
