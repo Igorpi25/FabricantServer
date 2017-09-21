@@ -1417,7 +1417,7 @@ $app->post('/orders/all/groups', 'authenticate', function() use ($app) {
  * Создает если товар не создан. Если передан id, то создает товар с переданным id
  * method POST
  */
-$app->post('/excel_form_products', function() use ($app) {
+$app->post('/excel_form_products0', function() use ($app) {
 	// array for final json response
 	$response = array();
 
@@ -1642,7 +1642,7 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------excel_form_products_kustuk".$_FILES["xls"]["name"]."----------------");
+	error_log("-------------excel_form_products_update_info".$_FILES["xls"]["name"]."----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -1731,7 +1731,6 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 			$cells[] = $cell->getValue();
 		}
 
-		$code1c=$cells[0];
 		$id=intval($cells[1]);
 		$name=$cells[2];
 		$price=$cells[3];
@@ -1757,9 +1756,10 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 			continue;
 		}else{
 			
-			$info=array();
+			$info=json_decode($product["info"],true);
 			
-			if(isset($name)){
+			//Чтоб не менять наименование
+			/*if(isset($name)){
 				$product["name"]=$name;
 				
 				$info["name"]=array();
@@ -1767,18 +1767,18 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 				$info["name_full"]=array();
 				$info["name_full"]["text"]=$name;
 				
-			}
+			}*/
 			
 			if(isset($summary)){				
 				$info["summary"]=array();
 				$info["summary"]["text"]=$summary;
 			}
 			
-			if(isset($price)){
+			/*if(isset($price)){
 				$product["price"];
 				
 				$info["price"]=$price;
-			}
+			}*/
 			
 			if(isset($photos)>0){
 		
@@ -1830,11 +1830,16 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 
 	}
 
+	//Уведомляем по коммуникатору измененные продукты
+	if(count($updated_products)>0){
+		consoleCommandNotifyProducts($updated_products);
+	}
+	
 	$response=array();
 	$response["error"]=false;
 	$response["success"]=1;
 	$response["updated_products"]=$updated_products;
-
+	
 	echoResponse(200,$response);
 
 });
@@ -2941,7 +2946,7 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 
 				//if(count($info_units)>0)$product["info"]["units"]=$info_units;
 
-				$product["status"]=1;
+				$product["status"]=2;
 
 				$created_products[]=$product;
 				
@@ -3076,6 +3081,12 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 			foreach($created_products as $product){
 				$index++;
 				$product["id"]=$db_fabricant->createProduct($product["contractorid"], $product["name"], $product["price"], json_encode($product["info"],JSON_UNESCAPED_UNICODE), $product["status"], $product["code1c"]);
+				
+				//Нет параметра для артикула в методе updateProduct, поэтому артикул проверяем и меняем отдельно
+				if( isset($product["article"]) ){
+					$db_fabricant->updateProductArticle($product["id"], $product["article"]);
+				}
+				
 				//error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']." article=".$product['article']);
 				
 			}
@@ -3370,15 +3381,32 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 		if(isset($record["customercode"])){
 			$outgoing_order["customercode"]=$record["customercode"];
 		}else{
-			$outgoing_order["customercode"]=null;
+			$temp_customercode=$db_profile->getCustomerCodeInContractorById($order["customerid"],$order["contractorid"]);
+			
+			if(isset($temp_customercode)){
+				$outgoing_order["customercode"]=$temp_customercode;
+			}else{				
+				$outgoing_order["customercode"]=null;
+				//Заказы без кода контрагента не отправляем
+				continue;
+			}
 		}
+		
 		$outgoing_order["customerName"]=$record["customerName"];
 		
 		$outgoing_order["customerUserId"]=$record["customerUserId"];
 		if(isset($record["customerUserCode"])){
 			$outgoing_order["customerUserCode"]=$record["customerUserCode"];
 		}else{
-			$outgoing_order["customerUserCode"]=null;
+			$temp_customerUserCode=$db_profile->getUserCodeInContractorById($record["customerUserCode"],$order["contractorid"]);
+			
+			if(isset($temp_customerUserCode)){
+				$outgoing_order["customerUserCode"]=$temp_customerUserCode;
+			}else{				
+				$outgoing_order["customerUserCode"]=null;
+				//Заказы без кода пользователя не отправляем
+				continue;
+			}
 		}
 		$outgoing_order["customerUserName"]=$record["customerUserName"];
 		
@@ -3767,6 +3795,232 @@ $app->post('/1c_users_created_kustuk', function() use ($app) {
 		$response["success"] = 0;
 
 		echoResponse(200, $response);
+});
+
+/**
+ * Возвращает контрагентов без кода, у которых есть активные заказы к поставщику
+ * method POST
+ */
+$app->post('/1c_contragents_kustuk', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'/*,"last_timestamp"*/));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+	//$last_timestamp = $app->request->post('last_timestamp');
+
+	//Формируем timestamp для последних 3-х дней
+	$date = date("M-d-Y", mktime(0, 0, 0, date('m'), date('d')-3, date('Y')));
+	$last_timestamp=strtotime($date);//-(3*60*60*24);
+
+	error_log("-------------1c_contragents_kustuk----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."_lasttimestamp=".$last_timestamp."|");
+	error_log("current_date=".date("M-d-Y"));
+	error_log("target_date=".$date);
+	error_log("timestamp=".$last_timestamp);
+
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant=new DbHandlerFabricant();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	//Проверяем доступ к группе
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+	
+	//Проверка доступна ли 1С синхронизация у этого поставщика
+	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
+	
+	//Берем флаг запрет импорта заказов без визы  
+	$contractor=$db_profile->getGroupById($contractorid)[0];
+	$contractor_info=(isset($contractor["info"]))?json_decode($contractor["info"],true):null;
+	
+	$synchronize_only_orders_with_visa=( isset($contractor_info["synchronize_only_orders_with_visa"]) && $contractor_info["synchronize_only_orders_with_visa"] );	
+	error_log("synchronize_only_orders_with_visa=".$synchronize_only_orders_with_visa);
+	
+	$orders=$db_fabricant->getOrdersDeltaOfContractor($contractorid,$last_timestamp);
+	error_log("orders count: ".count($orders));
+	
+	$outgoing_contragents=array();
+	
+	foreach($orders as $order){
+	
+		$record=json_decode($order["record"],true);
+		
+		error_log("");
+		error_log("orderid: ".$order["id"]);
+		error_log("status: ".$order["status"]);
+		error_log("code1c: ".$order["code1c"]);
+		
+		if(isset($record["visa"]))error_log("record: ".$record["visa"]);
+		
+		//Проверка условий для импорта заказа
+		if( $order["status"]!=1 || !empty($order["code1c"]) ){
+			error_log("abort: status or code1c are not correct");
+			continue;
+		}
+		
+		//Если стоит запрет на импорт заказа без визы
+		if( $synchronize_only_orders_with_visa && ( !isset($record["visa"]) || !$record["visa"] ) ){
+			error_log("abort: visa is not set");
+			continue;
+		}
+		
+		//Берем только те заказы у которых нет кода контрагента
+		if(isset($record["customercode"])){
+			continue;
+		}else{
+			
+			$temp_customercode=$db_profile->getCustomerCodeInContractorById($order["customerid"],$order["contractorid"]);
+			
+			//Проверяем на случай, если код был присвоен в базу после создания заказа
+			if(isset($temp_customercode)){
+				continue;
+			}else{
+				
+				$outgoing_contragent=array();
+				$outgoing_contragent["customerid"]=$order["customerid"];
+				$outgoing_contragent["customerName"]=$record["customerName"];
+				if(isset($record["address"])){
+					$outgoing_contragent["address"]=$record["address"];
+				}else{
+					$outgoing_contragent["address"]=null;
+				}
+				
+				if(isset($record["customerPhone"])){
+					$outgoing_contragent["customerPhone"]=$record["phone"];
+				}else{
+					$outgoing_contragent["customerPhone"]=null;
+				}
+				
+				$outgoing_contragents[]=$outgoing_contragent;
+			}
+		}
+		
+		
+		
+	}
+
+	echoResponse(200, $outgoing_contragents);
+
+});
+
+/**
+ * Возвращает пользователей без кода, у которых есть активные заказы к поставщику
+ * method POST
+ */
+$app->post('/1c_users_kustuk', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'/*,"last_timestamp"*/));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+	//$last_timestamp = $app->request->post('last_timestamp');
+
+	//Формируем timestamp для последних 3-х дней
+	$date = date("M-d-Y", mktime(0, 0, 0, date('m'), date('d')-3, date('Y')));
+	$last_timestamp=strtotime($date);//-(3*60*60*24);
+
+	error_log("-------------1c_users_kustuk----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."_lasttimestamp=".$last_timestamp."|");
+	error_log("current_date=".date("M-d-Y"));
+	error_log("target_date=".$date);
+	error_log("timestamp=".$last_timestamp);
+
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant=new DbHandlerFabricant();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	//Проверяем доступ к группе
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+	
+	//Проверка доступна ли 1С синхронизация у этого поставщика
+	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
+	
+	//Берем флаг запрет импорта заказов без визы  
+	$contractor=$db_profile->getGroupById($contractorid)[0];
+	$contractor_info=(isset($contractor["info"]))?json_decode($contractor["info"],true):null;
+	
+	$synchronize_only_orders_with_visa=( isset($contractor_info["synchronize_only_orders_with_visa"]) && $contractor_info["synchronize_only_orders_with_visa"] );	
+	error_log("synchronize_only_orders_with_visa=".$synchronize_only_orders_with_visa);
+	
+	$orders=$db_fabricant->getOrdersDeltaOfContractor($contractorid,$last_timestamp);
+	error_log("orders count: ".count($orders));
+	
+	$outgoing_users=array();
+	
+	foreach($orders as $order){
+	
+		$record=json_decode($order["record"],true);
+		
+		if(isset($record["visa"]))error_log("record: ".$record["visa"]);
+		
+		//Проверка условий для импорта заказа
+		if( $order["status"]!=1 || !empty($order["code1c"]) ){
+			error_log("abort: status or code1c are not correct");
+			continue;
+		}
+		
+		//Если стоит запрет на импорт заказа без визы
+		if( $synchronize_only_orders_with_visa && ( !isset($record["visa"]) || !$record["visa"] ) ){
+			error_log("abort: visa is not set");
+			continue;
+		}
+		
+		$outgoing_order["customerUserId"]=$record["customerUserId"];
+		
+		//Отправляем только те у кого нет кода пользователя
+		if(isset($record["customerUserCode"])){
+			continue;
+		}else{
+			$temp_customerUserCode=$db_profile->getUserCodeInContractorById($record["customerUserCode"],$order["contractorid"]);
+			
+			//Проверяем на случай, если код был установлен после создания заказа
+			if(isset($temp_customerUserCode))
+				continue;
+			else{
+				
+				error_log("");
+				error_log("orderid: ".$order["id"]);
+				error_log("status: ".$order["status"]);				
+				error_log("customerUserId: ".$record["customerUserId"]);
+				
+				$outgoing_user=array();
+				$outgoing_user["customerUserId"]=$record["customerUserId"];
+				$outgoing_user["customerUserName"]=$record["customerUserName"];
+				
+				$outgoing_users[]=$outgoing_user;
+			}
+		}
+		
+	}
+
+	echoResponse(200, $outgoing_users);
+
 });
 
 //-------------------------------------------------------------------
