@@ -1593,10 +1593,10 @@ class DbHandlerProfile extends DbHandler{
 
             $stmt->bind_param("ii", $userid,$contractorid);
 
+			$stmt->bind_result($usercode);
+				
 			if($stmt->execute() && $stmt->fetch()){
 			
-				$stmt->bind_result($usercode);
-				
 				return $usercode;
 			}else{
 				return NULL;
@@ -1610,9 +1610,11 @@ class DbHandlerProfile extends DbHandler{
 
             $stmt->bind_param("si", $usercode,$contractorid);
 
+			$stmt->bind_result($userid);
+			
 			if($stmt->execute() && $stmt->fetch()){
 			
-				$stmt->bind_result($userid);
+				
 				
 				return $userid;
 			}else{

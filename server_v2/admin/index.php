@@ -3387,6 +3387,7 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 				$outgoing_order["customercode"]=$temp_customercode;
 			}else{				
 				$outgoing_order["customercode"]=null;
+				error_log("abort: customercode is not set");
 				//Заказы без кода контрагента не отправляем
 				continue;
 			}
@@ -3398,17 +3399,37 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 		if(isset($record["customerUserCode"])){
 			$outgoing_order["customerUserCode"]=$record["customerUserCode"];
 		}else{
-			$temp_customerUserCode=$db_profile->getUserCodeInContractorById($record["customerUserCode"],$order["contractorid"]);
+			$temp_customerUserCode=$db_profile->getUserCodeInContractorById($record["customerUserId"],$order["contractorid"]);
 			
 			if(isset($temp_customerUserCode)){
 				$outgoing_order["customerUserCode"]=$temp_customerUserCode;
 			}else{				
 				$outgoing_order["customerUserCode"]=null;
-				//Заказы без кода пользователя не отправляем
-				continue;
 			}
 		}
 		$outgoing_order["customerUserName"]=$record["customerUserName"];
+		
+		
+		if( isset($record["visa"]) && $record["visa"] ){
+			$outgoing_order["visaAddedUserId"]=$record["visaAddedUserId"];
+			if(!empty($record["visaAddedUserCode"])){
+				$outgoing_order["visaAddedUserCode"]=$record["visaAddedUserCode"];
+			}else{
+				$temp_visaAddedUserCode=$db_profile->getUserCodeInContractorById($record["visaAddedUserId"],$order["contractorid"]);
+				
+				if(!empty($temp_visaAddedUserCode)){
+					$outgoing_order["visaAddedUserCode"]=$temp_visaAddedUserCode;
+				}else{
+					$outgoing_order["visaAddedUserCode"]=null;
+				}
+			}
+			
+			$outgoing_order["visaAddedUserName"]=$record["visaAddedUserName"];
+			$outgoing_order["visa"]=true;
+		}else{
+			$outgoing_order["visa"]=false;
+		}
+		
 		
 		if(isset($record["address"])){
 			$outgoing_order["address"]=$record["address"];
@@ -3452,6 +3473,8 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 		$outgoing_orders[]=$outgoing_order;
 		
 	}
+	
+	error_log("outgoing_orders: ".json_encode($outgoing_orders,JSON_UNESCAPED_UNICODE));
 
 	echoResponse(200, $outgoing_orders);
 
@@ -3520,6 +3543,11 @@ $app->post('/1c_orders_created_kustuk', function() use ($app) {
 		$data = base64_decode($data);
 		
 		$incoming_orders = json_decode($data,true);
+		
+		if(!isset($incoming_orders)){
+			throw new Exception('File is not json');
+		}
+		
 
         //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
 		unset($data);
@@ -3628,7 +3656,13 @@ $app->post('/1c_contragents_created_kustuk', function() use ($app) {
 		//Декодируем строку из base64 в нормальный вид
 		$data = base64_decode($data);
 		
+		error_log($data);
+		
 		$incoming_contragents=json_decode($data,true);
+		
+		if(!isset($incoming_contragents)){
+			throw new Exception('File is not json');
+		}
 
         //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
 		unset($data);
@@ -3647,6 +3681,32 @@ $app->post('/1c_contragents_created_kustuk', function() use ($app) {
 			
 			error_log($count_of_braches.". id=".$contragentid." code=".$contragentcode." phone=".$contragentphone);
 
+			$temp_customerid=$db_profile->getCustomerIdInContractorByCode($contragentcode,$contractorid);
+			
+			if(empty($contragentid) || empty($contragentid) || empty($contragentid) ){
+				error_log("failed. contragentid or contragentid or contragentid is not isset");
+				continue;
+			}
+			
+			if(isset($temp_customerid)){
+				error_log("failed. already exists with customerid=".$temp_customerid);
+				continue;
+			}
+			
+			$id_by_code=$db_profile->getCustomerIdInContractorByCode($contragentcode,$contractorid);
+			
+			if( isset($id_by_code) ){				
+				error_log("failed. code already exists in contractor with id=".$id_by_code);				
+				continue;
+			}
+			
+			$code_by_id=$db_profile->getCustomerCodeInContractorById($contragentid,$contractorid);
+
+			if( isset($code_by_id) ){				
+				error_log("failed. id already exists in contractor with code=".$code_by_id);				
+				continue;
+			}
+			
 			if( !isset($contragentid) && isset($contragentcode) ){
 				
 				//Создаем нового заказчика				
@@ -3658,7 +3718,7 @@ $app->post('/1c_contragents_created_kustuk', function() use ($app) {
 					error_log("created");
 					$contragentid=$create_customer_response["contragentid"];
 				}else{
-					error_log("failed");
+					error_log("failed. when createCustomer");
 					continue;
 				}
 			}
@@ -3666,6 +3726,8 @@ $app->post('/1c_contragents_created_kustuk', function() use ($app) {
 			error_log("set customer code in contarctor");
 			//Связка найденного(созданного) заказчика с контрагентом 1С
 			$db_profile->setCustomerCodeInContractor($contragentid, $contragentcode,$contractorid);
+			
+			
 			
 		}
 		
@@ -3705,7 +3767,7 @@ $app->post('/1c_users_created_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_users_created_kustuk".$_FILES["json"]["name"]."----------------");
+	error_log("-------------1c_users_created_kustuk ".$_FILES["json"]["name"]."----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -3755,6 +3817,10 @@ $app->post('/1c_users_created_kustuk', function() use ($app) {
 		$data = base64_decode($data);
 		
 		$incoming_users = json_decode($data,true);
+		
+		if(!isset($incoming_users)){
+			throw new Exception('File is not json');
+		}
 
         //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
 		unset($data);
@@ -3769,10 +3835,33 @@ $app->post('/1c_users_created_kustuk', function() use ($app) {
 			$code=$incoming_user["code"];
 			$name=$incoming_user["name"];
 			
+			error_log("");
+			error_log($count_of_braches.". id=".$id." code=".$code." name=".$name);
+			
+			if( empty($id) || empty($code) || empty($name) ){				
+				error_log("failed. id or code or name is not isset");				
+				continue;
+			}
+			
+			$id_by_code=$db_profile->getUserIdInContractorByCode($code,$contractorid);
+			
+			if( isset($id_by_code) ){				
+				error_log("failed. code already exists in contractor with id=".$id_by_code);				
+				continue;
+			}
+			
+			$code_by_id=$db_profile->getUserCodeInContractorById($id,$contractorid);
+
+			if( isset($code_by_id) ){				
+				error_log("failed. id already exists in contractor with code=".$code_by_id);				
+				continue;
+			}	
+
 			//Добавляем новую запись в code_in_contractor, в info пользователя
 			$db_profile->setUserCodeInContractor($id, $code,$contractorid);
-
-			error_log($count_of_braches.". id=".$id." code=".$code." name=".$name);
+			
+			error_log("success");
+			
 			
 		}
 		error_log(" ");
@@ -3854,16 +3943,12 @@ $app->post('/1c_contragents_kustuk', function() use ($app) {
 	
 	$outgoing_contragents=array();
 	
-	foreach($orders as $order){
+	foreach($orders as $num=>$order){
 	
+		error_log("");		
+		error_log("$num. orderid=".$order["id"]);
+		
 		$record=json_decode($order["record"],true);
-		
-		error_log("");
-		error_log("orderid: ".$order["id"]);
-		error_log("status: ".$order["status"]);
-		error_log("code1c: ".$order["code1c"]);
-		
-		if(isset($record["visa"]))error_log("record: ".$record["visa"]);
 		
 		//Проверка условий для импорта заказа
 		if( $order["status"]!=1 || !empty($order["code1c"]) ){
@@ -3879,6 +3964,7 @@ $app->post('/1c_contragents_kustuk', function() use ($app) {
 		
 		//Берем только те заказы у которых нет кода контрагента
 		if(isset($record["customercode"])){
+			error_log("abort: customercode is set: ".$record["customercode"]);
 			continue;
 		}else{
 			
@@ -3886,22 +3972,36 @@ $app->post('/1c_contragents_kustuk', function() use ($app) {
 			
 			//Проверяем на случай, если код был присвоен в базу после создания заказа
 			if(isset($temp_customercode)){
+				error_log("abort: customercode was set after order created: ".$temp_customercode);
 				continue;
 			}else{
+			
+			
+				error_log("status: ".$order["status"]);
+				error_log("code1c: ".$order["code1c"]);
+				
+				error_log("customerid: ".$order["customerid"]);
+				error_log("customerName: ".$record["customerName"]);
+				
 				
 				$outgoing_contragent=array();
 				$outgoing_contragent["customerid"]=$order["customerid"];
 				$outgoing_contragent["customerName"]=$record["customerName"];
+				
 				if(isset($record["address"])){
 					$outgoing_contragent["address"]=$record["address"];
+					error_log("code1c: ".$record["address"]);
 				}else{
 					$outgoing_contragent["address"]=null;
+					error_log("address: ".null);
 				}
 				
 				if(isset($record["customerPhone"])){
 					$outgoing_contragent["customerPhone"]=$record["phone"];
+					error_log("customerPhone: ".$record["phone"]);
 				}else{
 					$outgoing_contragent["customerPhone"]=null;
+					error_log("customerPhone: ".null);
 				}
 				
 				$outgoing_contragents[]=$outgoing_contragent;
@@ -3969,15 +4069,16 @@ $app->post('/1c_users_kustuk', function() use ($app) {
 	error_log("synchronize_only_orders_with_visa=".$synchronize_only_orders_with_visa);
 	
 	$orders=$db_fabricant->getOrdersDeltaOfContractor($contractorid,$last_timestamp);
-	error_log("orders count: ".count($orders));
+	error_log("potential orders count: ".count($orders));
 	
 	$outgoing_users=array();
 	
-	foreach($orders as $order){
-	
-		$record=json_decode($order["record"],true);
+	foreach($orders as $num=>$order){
+		error_log("");
+		error_log("$num. orderid=".$order["id"]);
 		
-		if(isset($record["visa"]))error_log("record: ".$record["visa"]);
+		
+		$record=json_decode($order["record"],true);
 		
 		//Проверка условий для импорта заказа
 		if( $order["status"]!=1 || !empty($order["code1c"]) ){
@@ -3991,27 +4092,26 @@ $app->post('/1c_users_kustuk', function() use ($app) {
 			continue;
 		}
 		
-		$outgoing_order["customerUserId"]=$record["customerUserId"];
-		
-		//Отправляем только те у кого нет кода пользователя
-		if(isset($record["customerUserCode"])){
+		//Отправляем только те у кого нет кода пользователя поставившего визу
+		if(isset($record["visaAddedUserCode"])){
+			error_log("abort: visaAddedUserCode is set in order");
 			continue;
 		}else{
-			$temp_customerUserCode=$db_profile->getUserCodeInContractorById($record["customerUserCode"],$order["contractorid"]);
+			$temp_visaAddedUserCode=$db_profile->getUserCodeInContractorById($record["visaAddedUserId"],$order["contractorid"]);
 			
 			//Проверяем на случай, если код был установлен после создания заказа
-			if(isset($temp_customerUserCode))
+			if(isset($temp_visaAddedUserCode)){
+				error_log("abort: visaAddedUserCode was set after order created");
 				continue;
-			else{
+			}else{
 				
-				error_log("");
-				error_log("orderid: ".$order["id"]);
 				error_log("status: ".$order["status"]);				
 				error_log("customerUserId: ".$record["customerUserId"]);
+				error_log("visaAddedUserId: ".$record["visaAddedUserId"]);
 				
 				$outgoing_user=array();
-				$outgoing_user["customerUserId"]=$record["customerUserId"];
-				$outgoing_user["customerUserName"]=$record["customerUserName"];
+				$outgoing_user["id"]=$record["visaAddedUserId"];				
+				$outgoing_user["name"]=$record["visaAddedUserName"];
 				
 				$outgoing_users[]=$outgoing_user;
 			}

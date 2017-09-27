@@ -483,6 +483,24 @@ $app->post('/change_password', 'authenticate', function() use ($app) {
 
 });
 
+$app->post('/change_password_maria', 'authenticate', function() use ($app) {
+
+		    verifyRequiredParams(array('password'));
+
+            $db = new DbHandlerProfile();
+
+            global $user_id;
+
+            $user = $db->getUserById($user_id);
+
+            // reading post params
+            $password = $app->request->post('password');
+
+			
+			$response = $db->changeUserPassword($user_id,$password);
+			echoResponse(200, $response);	
+});
+
 //-----------------Photo Uploading--------------------------
 
 function createThumb($image,$size,$path){
@@ -1470,7 +1488,8 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 	if($_FILES["json"]["size"] > 100*1024*1024) {
 		throw new Exception('File is too big');
 	}
-
+	
+	
 	$tmpFile = $_FILES["json"]["tmp_name"];
 
 	$filename = date('dmY').'-'.uniqid('1c_orders_kustuk_pass-').".json";
@@ -1484,6 +1503,10 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 	
 	//Берем данные в массив
 	$incoming_orders = json_decode($data,true);
+	
+	if(!isset($incoming_orders)){
+		throw new Exception('File is not json');
+	}
 
 	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
 	
@@ -1515,9 +1538,13 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 			$contragentaddress = $incoming_order["address"];
 			$contragentphone = $incoming_order["phone"];
 			
-			$userid = $incoming_order["customerUserId"];
-			$usercode = $incoming_order["customerUserCode"];
-			$username = $incoming_order["customerUserName"];
+			$customerUserId = $incoming_order["customerUserId"];
+			$customerUserCode = $incoming_order["customerUserCode"];
+			$customerUserName = $incoming_order["customerUserName"];
+			
+			$visaAddedUserId = $incoming_order["visaAddedUserId"];
+			$visaAddedUserCode = $incoming_order["visaAddedUserCode"];
+			$visaAddedUserName = $incoming_order["visaAddedUserName"];
 			
 			$comment = $incoming_order["comment"];
 			
@@ -1532,9 +1559,13 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 			error_log("contragentaddress: ".$contragentaddress);
 			error_log("contragentphone: ".$contragentphone);
 			
-			error_log("userid: ".$userid);
-			error_log("usercode: ".$usercode);
-			error_log("username: ".$username);
+			error_log("customerUserId: ".$customerUserId);
+			error_log("customerUserCode: ".$customerUserCode);
+			error_log("customerUserName: ".$customerUserName);
+			
+			error_log("visaAddedUserId: ".$visaAddedUserId);
+			error_log("visaAddedUserCode: ".$visaAddedUserCode);
+			error_log("visaAddedUserName: ".$visaAddedUserName);
 			
 			error_log("comment: ".$comment);
 			
@@ -1544,6 +1575,8 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				echoResponse(200,$response);
 				continue;
 			}
+			
+			
 			
 			$incoming_order_items=$incoming_order["items"];
 			
@@ -1586,19 +1619,53 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 			//Находим заказ по коду
 			$order=$db_fabricant->getOrderByCode($ordercode);
 			
+			$changed_flag=false;
 			
 			if(!isset($order)){	
 			
 				error_log("Creating new order: ordercode=".$ordercode." contragentcode=".$contragentcode);
-				
+						
 				$customerid=$db_profile->getCustomerIdInContractorByCode($contragentcode,$contractorid);
-				
+					
 				//Если заказчик не существует то создаем его, и привязываем его id к contracgentcode
 				if( !isset($customerid) && isset($contragentcode) ){
 				
 					//Создаем нового заказчика				
 					error_log("creating new customer");		
-					$create_customer_response=createCustomer($contragentname,$contragentaddress,$contragentphone,"{}",$user_id);
+					
+					if(!isset($contragentaddress)){
+						$contragentaddress="Адрес не указан";
+					}
+					
+					if(!isset($contragentphone)){
+						$contragentphone="";
+					}
+					
+					$agent_id=null;
+					
+					//Добавление агента в создаваемую группу в качестве админа
+					if(!empty($visaAddedUserCode) ){
+						error_log("adding agentid to new customer group as admin"); 
+						error_log("agentid: visaAddedUserCode=".$visaAddedUserCode); 
+						
+						$visaAddedUserId_by_code=$db_profile->getUserIdInContractorByCode($visaAddedUserCode,$contractorid);
+						
+						if(!empty($visaAddedUserId_by_code)){
+							
+							if($visaAddedUserId_by_code!=$user_id){
+								
+								$agent_id=$visaAddedUserId_by_code;
+								error_log("success. agentid=".$agent_id); 								
+							}else{
+								error_log("canceled. agentid equals user_id=".$user_id); 
+							}
+							
+						}else{
+							error_log("canceled. visaAddedUserCode is not associated with userid"); 
+						}
+					}
+					
+					$create_customer_response=createCustomer($contragentname,$contragentaddress,$contragentphone,"{}",$user_id,$agent_id);
 					
 					if( isset($create_customer_response["id"]) ){
 						error_log("created");
@@ -1627,11 +1694,25 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				$json_order["items"]=$json_order_items;
 				error_log("creating order user_id=".$user_id." phone=".$phone." contractorid=".$contractorid." customerid=".$customerid);
 				$create_order_response=createOrder(json_encode($json_order,JSON_UNESCAPED_UNICODE),$user_id);
-				error_log("created");
 				
 				$order=$create_order_response['order'];
-			
+				$record=json_decode($order["record"],true);
+				
+				error_log("created. orderid=".$order["id"]);
+				
+				//Установления кода 1с
+				error_log("setting code1c to created order");
+				error_log("code1c=".$ordercode);
+				if($db_fabricant->updateOrderCode($order["id"], $ordercode)){					
+					error_log("success. code1c set");
+				}else{
+					error_log("failed. db_fabricant sql error");
+				}
+				
+							
 			}else{
+			
+				error_log("Changing order: orderid=".$order["id"]);
 			
 				//Если заказ существует, то обновляем данные
 				
@@ -1694,8 +1775,6 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 					$update_flag=true;
 				}
 				
-				$changed_flag=false;
-				
 				if($update_flag){
 					$changed_flag=true;
 					
@@ -1716,9 +1795,61 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 					$response["update"]=$result["message"];	
 					
 					$order=$db_fabricant->getOrderById($orderid);
+					$record=json_decode($order["record"],true);
 					
 				}
 			
+			}
+			
+			//Добавление визы агента привязанного к этому контрагенту
+			if(!empty($visaAddedUserCode)){
+				error_log("visaAddedUserCode exists"); 
+				error_log("adding visa by visaAddedUserCode");
+				
+				$visaAddedUserId_by_code=$db_profile->getUserIdInContractorByCode($visaAddedUserCode,$contractorid);
+				
+				if(!empty($visaAddedUserId_by_code)){
+					error_log("userid=".$visaAddedUserId_by_code." found for visaAddedUserCode=".$visaAddedUserCode);
+					try{
+						checkVisaPermissionForUserId($contractorid,$order["customerid"],$visaAddedUserId_by_code);							
+						
+					}catch(Exception $e){
+						error_log("failed. user id=".$visaAddedUserId_by_code." has no permission to add visa to order of customer id=".$order["customerid"]);
+						error_log("failed. exception message: ".$e);
+						
+					}
+					
+					$add_visa_to_order_response=addVisaToOrder($order["id"],$visaAddedUserId_by_code);
+						
+					if(isset($add_visa_to_order_response["order"])){
+						$order=$add_visa_to_order_response["order"];
+						$record=json_decode($order["record"],true);
+						error_log("added. visa successfully added to order");
+					}else{
+						error_log("failed. when addVisaToOrder orderid=".$order["id"]);
+						error_log("failed. exception message: ".$add_visa_to_order_response["message"]);
+					}
+						
+				}else{
+					error_log("failed. visaAddedUserCode=".$visaAddedUserCode." is not associated with user");
+				}
+			}
+			
+			$record=json_decode($order["record"],true);
+			
+			if(empty($record["visa"])){
+				error_log("visa is still not exists"); 
+				error_log("adding admin visa by checking user_id");
+				
+				$add_visa_to_order_response=addVisaToOrder($order["id"],$user_id);
+						
+				if(isset($add_visa_to_order_response["order"])){
+					$order=$add_visa_to_order_response["order"];
+					$record=json_decode($order["record"],true);
+					error_log("added. visa successfully added to order");
+				}else{
+					error_log("failed. when addVisaToOrder");
+				}
 			}
 			
 			$orderid=$order["id"];
@@ -1730,6 +1861,7 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				error_log("accepted");
 				$response["accept"]=$result["message"];				
 				$order=$db_fabricant->getOrderById($orderid);
+				$record=json_decode($order["record"],true);
 			}
 			
 			if($orderstatus==4 && $order["status"]!=4){
@@ -1739,6 +1871,7 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				error_log("removed");
 				$response["remove"]=$result;				
 				$order=$db_fabricant->getOrderById($orderid);
+				$record=json_decode($order["record"],true);
 			}
 			
 			if(!$changed_flag){
@@ -1754,17 +1887,28 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 	echoResponse(200, $response);
 });
 
-function createCustomer($name,$address,$phone,$info,$user_id){
+//Используется в 1c_order_pass_kustuk
+function createCustomer($name,$address,$phone,$info,$creater_id,$agent_id){
 	// creating new contracotor
 	$db = new DbHandlerProfile();
-
-	permissionFabricantAdmin($user_id);
-
+	
 	$status = 1;
 	$type = 1;
 	$new_id = $db->createGroupWeb($name, $address, $phone, $status, $type, $info);
+	
+	
 	$response = array();
 	if ($new_id != NULL) {		
+		
+		
+		//Супер-админ
+		$db->addUserToGroup($new_id,$creater_id,1);
+		
+		//Агент
+		if(!empty($agent_id)){
+			$db->addUserToGroup($new_id,$agent_id,8);
+		}
+				
 		$response["error"] = false;
 		$response["message"] = "Customer created successfully";
 		$response["id"] = $new_id;
@@ -1789,6 +1933,8 @@ function createCustomer($name,$address,$phone,$info,$user_id){
 	
 	return $response;
 }
+
+
 
 //--------------------Orders Utils------------------------
 
@@ -2463,16 +2609,22 @@ function check1CSynchronizingEnabledInContractor($contractorid,$db_profile){
 }
 
 function checkVisaPermission($contractorid,$customerid) {
+	//Проверка возможности ставить визу для текущего пользователя
+	global $user_id;
+
+	checkVisaPermissionForUserId($contractorid,$customerid,$user_id);
+
+}
+
+function checkVisaPermissionForUserId($contractorid,$customerid,$userid) {
 	//Используется для зафиксирования заказа. Например, дать понять поставщику, что заказ одобрен агентом
 	//Визу может ставить Агент или админ поставщика
 
 	$db_profile = new DbHandlerProfile();
 	$db_fabricant = new DbHandlerFabricant();
 
-	global $user_id;
-
-	$user_status_in_contractor=$db_profile->getUserStatusInGroup($contractorid,$user_id);
-	$user_status_in_customer=$db_profile->getUserStatusInGroup($customerid,$user_id);
+	$user_status_in_contractor=$db_profile->getUserStatusInGroup($contractorid,$userid);
+	$user_status_in_customer=$db_profile->getUserStatusInGroup($customerid,$userid);
 
 	//Если админ в группе поставщика, либо агент в поставщике и одновременно агент или админ в группе заказчика. Иначе выброс исключения
 	if(!(
