@@ -1749,6 +1749,15 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 			$units=null;
 		}
 
+		try{
+			$info_details=json_decode($cells[8]);
+		}catch(Exception $e){
+			$info_details=null;
+		}
+
+		// Приоритет, столбец после info
+		$priority = $cells[9];
+
 		$product=$db_fabricant->getProductById($id);
 
 		//Если код продукта не существует в контракторе, создаем новый продукт
@@ -1807,8 +1816,36 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 					$info["icon"]=array();
 					$info["icon"]["image_url"]=(count($slides)>0)?$slides[0]["photo"]["image_url"]:"";					
 				}
-				
-				
+			}
+
+			if (isset($info_details) && count($info_details) > 0) {
+				$details = array();
+				// если установлены слайды добавляем
+				if (isset($info["details"]) && count($info["details"]) > 0) {
+					$details = $info["details"];
+				}
+
+				foreach($info_details as $info_detail){
+					$info_detail_obj = array();
+
+					$info_detail_obj_explode = explode("\r\n", $info_detail, 2);
+
+					if (count($info_detail_obj_explode) > 1) {
+						$info_detail_obj["type"] = 1;
+						$info_detail_obj["title"] = array();
+						$info_detail_obj["title"]["text"] = $info_detail_obj_explode[0];
+
+						$info_detail_obj["photo"] = array();
+						$info_detail_obj["photo"]["image_url"] = "";
+
+						$info_detail_obj["value"] = array();
+						$info_detail_obj["value"]["text"] = $info_detail_obj_explode[1];
+
+						$details[] = $info_detail_obj;
+					}
+				}
+
+				$info["details"]=$details;
 			}
 			
 			if(isset($units)){
@@ -1820,6 +1857,10 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 					$info["tags"]=array();
 					$info["tags"][]=$group;
 				}
+			}
+
+			if(isset($priority) && intval($priority) != 0) {
+				$info["priority"]=intval($priority);
 			}
 			
 			$db_fabricant->updateProduct($product["id"], $product["name"], $product["price"], json_encode($info,JSON_UNESCAPED_UNICODE), $product["status"]);
@@ -3198,7 +3239,13 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 		$data = file_get_contents($tmpFile);
 		//Декодируем строку из base64 в нормальный вид
 		$data = base64_decode($data);
-
+		
+		/*if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+            @fwrite($fp, $data);
+            @fclose($fp);
+			$success=true;
+        }*/
+		
 		$incoming_products = json_decode($data,true);
 		
         //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
@@ -3352,22 +3399,22 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 	
 		$record=json_decode($order["record"],true);
 		
-		error_log("");
+		/*error_log("");
 		error_log("orderid: ".$order["id"]);
 		error_log("status: ".$order["status"]);
-		error_log("code1c: ".$order["code1c"]);
+		error_log("code1c: ".$order["code1c"]);*/
 		
 		if(isset($record["visa"]))error_log("record: ".$record["visa"]);
 		
 		//Проверка условий для импрта заказа
 		if( $order["status"]!=1 || !empty($order["code1c"]) ){
-			error_log("abort: status or code1c are not correct");
+			//error_log("abort: status or code1c are not correct");
 			continue;
 		}
 		
 		//Если стоит запрет на импорт заказа без визы
 		if( $synchronize_only_orders_with_visa && ( !isset($record["visa"]) || !$record["visa"] ) ){
-			error_log("abort: visa is not set");
+			//error_log("abort: visa is not set");
 			continue;
 		}
 		
@@ -3387,7 +3434,7 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 				$outgoing_order["customercode"]=$temp_customercode;
 			}else{				
 				$outgoing_order["customercode"]=null;
-				error_log("abort: customercode is not set");
+				//error_log("abort: customercode is not set");
 				//Заказы без кода контрагента не отправляем
 				continue;
 			}
@@ -3952,19 +3999,19 @@ $app->post('/1c_contragents_kustuk', function() use ($app) {
 		
 		//Проверка условий для импорта заказа
 		if( $order["status"]!=1 || !empty($order["code1c"]) ){
-			error_log("abort: status or code1c are not correct");
+			//error_log("abort: status or code1c are not correct");
 			continue;
 		}
 		
 		//Если стоит запрет на импорт заказа без визы
 		if( $synchronize_only_orders_with_visa && ( !isset($record["visa"]) || !$record["visa"] ) ){
-			error_log("abort: visa is not set");
+			//error_log("abort: visa is not set");
 			continue;
 		}
 		
 		//Берем только те заказы у которых нет кода контрагента
 		if(isset($record["customercode"])){
-			error_log("abort: customercode is set: ".$record["customercode"]);
+			//error_log("abort: customercode is set: ".$record["customercode"]);
 			continue;
 		}else{
 			
@@ -3972,7 +4019,7 @@ $app->post('/1c_contragents_kustuk', function() use ($app) {
 			
 			//Проверяем на случай, если код был присвоен в базу после создания заказа
 			if(isset($temp_customercode)){
-				error_log("abort: customercode was set after order created: ".$temp_customercode);
+				//error_log("abort: customercode was set after order created: ".$temp_customercode);
 				continue;
 			}else{
 			
@@ -4074,34 +4121,34 @@ $app->post('/1c_users_kustuk', function() use ($app) {
 	$outgoing_users=array();
 	
 	foreach($orders as $num=>$order){
-		error_log("");
-		error_log("$num. orderid=".$order["id"]);
+		//error_log("");
+		//error_log("$num. orderid=".$order["id"]);
 		
 		
 		$record=json_decode($order["record"],true);
 		
 		//Проверка условий для импорта заказа
 		if( $order["status"]!=1 || !empty($order["code1c"]) ){
-			error_log("abort: status or code1c are not correct");
+			//error_log("abort: status or code1c are not correct");
 			continue;
 		}
 		
 		//Если стоит запрет на импорт заказа без визы
 		if( $synchronize_only_orders_with_visa && ( !isset($record["visa"]) || !$record["visa"] ) ){
-			error_log("abort: visa is not set");
+			//error_log("abort: visa is not set");
 			continue;
 		}
 		
 		//Отправляем только те у кого нет кода пользователя поставившего визу
 		if(isset($record["visaAddedUserCode"])){
-			error_log("abort: visaAddedUserCode is set in order");
+			//error_log("abort: visaAddedUserCode is set in order");
 			continue;
 		}else{
 			$temp_visaAddedUserCode=$db_profile->getUserCodeInContractorById($record["visaAddedUserId"],$order["contractorid"]);
 			
 			//Проверяем на случай, если код был установлен после создания заказа
 			if(isset($temp_visaAddedUserCode)){
-				error_log("abort: visaAddedUserCode was set after order created");
+				//error_log("abort: visaAddedUserCode was set after order created");
 				continue;
 			}else{
 				

