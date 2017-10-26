@@ -1646,10 +1646,19 @@ class DbHandlerProfile extends DbHandler{
 	* Get all groups from web (adminpanel)
 	*/
 	public function getAllGroupsWeb($type) {
-		$stmt = $this->conn->prepare("SELECT g.id, g.name, g.address, g.phone, g.status, g.info, g.created_at, g.changed_at, a.filename_icon, a.filename_avatar, a.filename_full FROM groups g LEFT OUTER JOIN avatars a ON g.avatar=a.id WHERE g.type=?");
+		
+		$stmt = $this->conn->prepare("
+			SELECT g.id, g.name, g.address, g.phone, g.status, g.info, g.created_at, g.changed_at, a.filename_icon, a.filename_avatar, a.filename_full, c.customercode 
+			FROM groups g 
+			LEFT OUTER JOIN avatars a ON g.avatar=a.id 
+			LEFT OUTER JOIN customer_code_in_contractor c ON g.id=c.customerid 
+			WHERE g.type=? 
+			GROUP BY id 
+		");
+		
 		$stmt->bind_param("i", $type);
 		if($stmt->execute()) {
-			$stmt->bind_result($id,$name,$address,$phone,$status,$info,$created_at,$changed_at,$icon,$avatar,$full);
+			$stmt->bind_result($id,$name,$address,$phone,$status,$info,$created_at,$changed_at,$icon,$avatar,$full,$customercode);
 			$result=array();
 			while($stmt->fetch()) {
 				$res=array();
@@ -1658,11 +1667,12 @@ class DbHandlerProfile extends DbHandler{
 				$res["address"]=$address;
 				$res["phone"]=$phone;
 				$res["status"]=$status;
-				$res["info"]=$info;
+				$res["info"]=$info;				
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 				$res["created_at"]=$timestamp_object->getTimestamp();
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 				$res["changed_at"] = $timestamp_object->getTimestamp();
+				$res["customercode"]=$customercode;
 				$result[]=$res;
 			}
 			$stmt->close();

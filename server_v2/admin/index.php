@@ -8,6 +8,8 @@ require_once dirname(__FILE__).'/../include/PassHash.php';
 require_once dirname(__FILE__).'/../libs/Slim/Slim.php';
 require_once dirname(__FILE__).'/../communicator/WebsocketClient.php';
 
+require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
 
 define('WEBSOCKET_SERVER_PORT', 8666);
 
@@ -1060,6 +1062,7 @@ $app->post('/customers/create/empty', function() use ($app) {
  * Creating customer
  * method POST
  * url /contractor
+ * customercode - это временное решение для UID Кустук
  */
 $app->post('/customers/create', 'authenticate', function() use ($app) {
 
@@ -1071,15 +1074,23 @@ $app->post('/customers/create', 'authenticate', function() use ($app) {
 	$address = $app->request->post('address');
 	$phone = $app->request->post('phone');
 	$info = $app->request->post('info');
-	
+	$customercode = $app->request->put('customercode');//Временное решение для UID Кустук
+
 	$response=createCustomer($name,$address,$phone,$info,$user_id);
-	
+
+	//Временное решение для UID Кустук
+	if(!empty($customercode)){
+		$db = new DbHandlerProfile();
+		$db->setCustomerCodeInContractor($response["id"], $customercode, 127);
+	}
+
 	echoResponse(201, $response);
 });
 /**
  * Updating customers
  * method PUT
  * url /customers/:id
+ * customercode - это временное решение для UID Кустук
  */
 $app->put('/customers/:id', 'authenticate',  function($id) use ($app) {
 
@@ -1091,11 +1102,19 @@ $app->put('/customers/:id', 'authenticate',  function($id) use ($app) {
 	$address = $app->request->put('address');
 	$phone = $app->request->put('phone');
 	$info = $app->request->put('info');
+	$customercode = $app->request->put('customercode');//Временное решение для UID Кустук
+
 	// updating customers
 	$db = new DbHandlerProfile();
 
 	permissionInGroup($user_id, $id, $db);
 	$result = $db->updateGroupWeb($id, $name, $address, $phone, $info);
+
+	//Временное решение для UID Кустук
+	if(!empty($customercode)){
+		$db->setCustomerCodeInContractor($id, $customercode, 127);
+	}
+
 	$response = array();
 	if ($result) {
 		$response["error"] = false;
@@ -1142,18 +1161,18 @@ function createCustomer($name,$address,$phone,$info,$user_id){
 	$type = 1;
 	$new_id = $db->createGroupWeb($name, $address, $phone, $status, $type, $info);
 	$response = array();
-	if ($new_id != NULL) {		
+	if ($new_id != NULL) {
 		$response["error"] = false;
 		$response["message"] = "Customer created successfully";
 		$response["id"] = $new_id;
-		
+
 		consoleCommandGroupUpdated($new_id);
-		
+
 	}else {
 		$response["error"] = true;
 		$response["message"] = "Failed to create customer. Please try again";
 	}
-	
+
 	return $response;
 }
 
@@ -1764,33 +1783,33 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 		if(!isset($product)){
 			continue;
 		}else{
-			
+
 			$info=json_decode($product["info"],true);
-			
+
 			//Чтоб не менять наименование
 			/*if(isset($name)){
 				$product["name"]=$name;
-				
+
 				$info["name"]=array();
 				$info["name"]["text"]=$name;
 				$info["name_full"]=array();
 				$info["name_full"]["text"]=$name;
-				
+
 			}*/
-			
-			if(isset($summary)){				
+
+			if(isset($summary)){
 				$info["summary"]=array();
 				$info["summary"]["text"]=$summary;
 			}
-			
+
 			/*if(isset($price)){
 				$product["price"];
-				
+
 				$info["price"]=$price;
 			}*/
-			
+
 			if(isset($photos)>0){
-		
+
 				$slides=array();
 
 				foreach($photos as $photo){
@@ -1803,18 +1822,18 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 
 					$slides[]=$slide;
 				}
-				
+
 				if(count($slides)>0){
-				
+
 					$slider=array();
 					$slider["type"]=2;
-					$slider["slides"]=$slides;									
+					$slider["slides"]=$slides;
 					$details=array();
 					$details[]=$slider;
-					
-					$info["details"]=$details;		
+
+					$info["details"]=$details;
 					$info["icon"]=array();
-					$info["icon"]["image_url"]=(count($slides)>0)?$slides[0]["photo"]["image_url"]:"";					
+					$info["icon"]["image_url"]=(count($slides)>0)?$slides[0]["photo"]["image_url"]:"";
 				}
 			}
 
@@ -1847,12 +1866,12 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 
 				$info["details"]=$details;
 			}
-			
+
 			if(isset($units)){
 				$info["units"]=$units;
 			}
 
-			if(isset($group)){				
+			if(isset($group)){
 				if(!empty(trim($group))){
 					$info["tags"]=array();
 					$info["tags"][]=$group;
@@ -1862,10 +1881,10 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 			if(isset($priority) && intval($priority) != 0) {
 				$info["priority"]=intval($priority);
 			}
-			
+
 			$db_fabricant->updateProduct($product["id"], $product["name"], $product["price"], json_encode($info,JSON_UNESCAPED_UNICODE), $product["status"]);
-			
-			error_log($rowIndex.". updated id=".$id." price=".$price." group=".$group);			
+
+			error_log($rowIndex.". updated id=".$id." price=".$price." group=".$group);
 			$updated_products[]=$product;
 		}
 
@@ -1875,12 +1894,12 @@ $app->post('/excel_form_products_update_info', function() use ($app) {
 	if(count($updated_products)>0){
 		consoleCommandNotifyProducts($updated_products);
 	}
-	
+
 	$response=array();
 	$response["error"]=false;
 	$response["success"]=1;
 	$response["updated_products"]=$updated_products;
-	
+
 	echoResponse(200,$response);
 
 });
@@ -1945,6 +1964,390 @@ $app->post('/cashtoinstallment', 'authenticate', function() use ($app) {
 	echoResponse(200, $response);
 
 });
+
+//----------------------Статистика----------------------
+$app->post('/excel_massive_test', function() use ($app) {
+
+	$response=array();
+	$response["error"]=false;
+	$response["success"]=1;
+	$response["log"]=$_FILES["xls"];
+
+	echoResponse(200,$response);
+});
+/**
+ * Обработка массива
+ * method POST
+ */
+$app->post('/excel_massive', 'authenticate', function() use ($app) {
+	global $user_id;
+    $db_profile = new DbHandlerProfile();
+    // только для кустука
+    $contractorid = 127;
+	permissionAdminInGroup($user_id, $contractorid, $db_profile);
+
+    //-------------------Берем Excel файл----------------------------
+    try {
+        if (!isset($_FILES["xls"])) {
+	        throw new Exception('Files is missing');
+	    }
+	    if(count($_FILES['xls']["name"]) != 3) {
+			throw new Exception('Files count shoud be three');
+		}
+    	foreach ($_FILES['xls']["error"] as $key => $value) {
+    		if($value != 0) {
+    			throw new Exception('Error to upload file '.$_FILES['xls']["name"][$key]);
+    		}
+    	}
+	    // Check the file size > 100MB
+    	foreach ($_FILES['xls']["size"] as $key => $value) {
+    		if($value > 100*1024*1024) {
+    			throw new Exception('File '.$_FILES['xls']["name"][$key].' is too big');
+    		}
+    	}
+
+    	$baseFileIndex = 0;
+    	$tmpIndexes = array();
+
+    	foreach ($_FILES["xls"]["name"] as $index => $name) {
+    		$ext = pathinfo($name, PATHINFO_EXTENSION);
+    		if ($ext == "xlsm") {
+    			$baseFileIndex = $index;
+    		} else {
+    			$tmpIndexes[] = $index;
+    		}
+    	}
+
+    	if ($_FILES['xls']["size"][$tmpIndexes[0]] > $_FILES['xls']["size"][$tmpIndexes[1]]) {
+    		$massiveFileIndex = $tmpIndexes[0];
+    		$articlesFileIndex = $tmpIndexes[1];
+    	} else {
+    		$massiveFileIndex = $tmpIndexes[1];
+    		$articlesFileIndex = $tmpIndexes[0];
+    	}
+
+        $massiveTmpFile = $_FILES["xls"]["tmp_name"][$massiveFileIndex];
+        $articlesTmpFile = $_FILES["xls"]["tmp_name"][$articlesFileIndex];
+        $baseTmpFile = $_FILES["xls"]["tmp_name"][$baseFileIndex];
+		// настройки PHPExcel (на хабре еаписали, что помогает при работе с большими файлами)
+        // https://habrahabr.ru/post/148203/
+        $cacheMethod = PHPExcel_CachedObjectStorageFactory::cache_to_phpTemp;
+        $cacheSettings = array( 'memoryCacheSize ' => '256MB');
+        PHPExcel_Settings::setCacheStorageMethod($cacheMethod, $cacheSettings);
+
+        // чтение файла с артикулами
+        $articlesReader = PHPExcel_IOFactory::createReader('Excel5');
+        $articlesReader->setReadDataOnly(true);
+        $articlesPHPExcel = $articlesReader->load($articlesTmpFile);
+        $articlesPHPExcel->setActiveSheetIndex(0);
+        $articlesWorksheet = $articlesPHPExcel->getActiveSheet();
+
+        $articlesHighestRow = $articlesWorksheet->getHighestRow();
+        $articlesHighestColumn = $articlesWorksheet->getHighestColumn();
+        $articlesHighestColumnIndex = PHPExcel_Cell::columnIndexFromString($articlesHighestColumn);
+        // массив с названиями колонок newform
+        $newformColumnNames = array();
+        // массив с артикулами, вида [ "AA" => ["0000-00" => count] ]
+        $articles = array();
+        for ($rowIndex = 2; $rowIndex <= $articlesHighestRow; ++$rowIndex) {
+            $columnName = $articlesWorksheet->getCellByColumnAndRow(0, $rowIndex)->getValue();
+            $newformColumnNames[$columnName] = $articlesWorksheet->getCellByColumnAndRow(1, $rowIndex)->getValue();
+            $articles_items = array();
+            for ($colIndex = 3; $colIndex < $articlesHighestColumnIndex; ++$colIndex) {
+                $cellValue = trim($articlesWorksheet->getCellByColumnAndRow($colIndex, $rowIndex)->getValue());
+                if (!empty($cellValue) && !in_array($cellValue, $articles_items)) {
+                    $articles_items[] = $cellValue;
+                }
+            }
+            if (count($articles_items) > 0) {
+                $articles[$columnName] = $articles_items;
+            }
+        }
+        unset($articlesReader);
+        unset($articlesPHPExcel);
+
+        // чтение файла базы
+        // названия столбцов для чтения из базы и индексы создаваемого массива
+        // 0 - F - code
+        // 1 - L - namett
+        // 2 - M - adrestt
+        // 3 - N - typett
+        // 4 - BS - active
+
+        $baseReadSheet = 'Общая база розничных т_т_на сен';
+        $baseStartRow = 9;
+        $baseReader = PHPExcel_IOFactory::createReader('Excel2007');
+        $baseReader->setReadDataOnly(true);
+        $baseReader->setLoadSheetsOnly($baseReadSheet);
+        $basePHPExcel = $baseReader->load($baseTmpFile);
+        $baseWorksheet = $basePHPExcel->getSheetByName($baseReadSheet);
+
+        $baseHighestRow = $baseWorksheet->getHighestRow();
+        $baseHighestColumn = $baseWorksheet->getHighestColumn();
+        $baseHighestColumnIndex = PHPExcel_Cell::columnIndexFromString($baseHighestColumn);
+        $baseHighestColumn++;
+        // массив с магазинами
+        $checkCustomers = array();
+        // последний заполненный столбец
+        $activeColName = 'BS';
+        // поиск последнего заполненного столбеца
+        for ($colIndex = 'O'; $colIndex != $baseHighestColumn; ++$colIndex) {
+            $notEmptyColName = trim($baseWorksheet->getCell($colIndex.'8')->getValue());
+            if (!empty($notEmptyColName)) {
+                $activeColName = $colIndex;
+            }
+        }
+        $checkCustomersWithEmptyCode = array();
+        for ($rowIndex = $baseStartRow; $rowIndex <= $baseHighestRow; ++$rowIndex) {
+            $rowCustomerActivity = trim($baseWorksheet->getCell($activeColName.$rowIndex)->getValue());
+            if (intval($rowCustomerActivity) === 1) {
+                $rowCustomerCode = trim($baseWorksheet->getCell('F'.$rowIndex)->getValue());
+                $rowCustomerName = $baseWorksheet->getCell('L'.$rowIndex)->getValue();
+                $rowCustomerAddress = $baseWorksheet->getCell('M'.$rowIndex)->getValue();
+                $rowCustomerType = $baseWorksheet->getCell('N'.$rowIndex)->getValue();
+                if (empty($rowCustomerCode)) {
+                	$rowCustomerCode = 'tmpCode-'.uniqid();
+	                $checkCustomersWithEmptyCode[$rowCustomerCode] = [
+	                    'name' => $rowCustomerName,
+	                    'address' => $rowCustomerAddress,
+	                    'type' => $rowCustomerType
+	                ];
+                }
+                $checkCustomers[$rowCustomerCode] = [
+                    'name' => $rowCustomerName,
+                    'address' => $rowCustomerAddress,
+                    'type' => $rowCustomerType
+                ];
+            }
+        }
+        unset($baseReader);
+        unset($basePHPExcel);
+
+        // названия столбцов для чтения из массива и индексы создаваемого массива
+        // 0 - e - tp
+        // 1 - f - kodtt
+        // 2 - k - namett
+        // 3 - l - adrestt
+        // 4 - n - nndok
+        // 5 - o - datadok
+        // 6 - t - kodtov
+        // 7 - v - astr
+        // 8 - w - cat
+        // 9 - x - rbp
+        // 10 - y - Saleunit
+        // 11 - z - Salerur
+        // 12 - aa - Salekg
+        // 13 - ab - sum_salerur
+
+        $massiveReadColumns = array(
+            //'E', 'F', 'K', 'L', 'N', 'O', 'T', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB'
+            'E', 'F', 'K', 'L', 'T'
+        );
+        $massiveFilter = new excelReadFilterByColumn($massiveReadColumns);
+        $massiveReader = PHPExcel_IOFactory::createReader("Excel5");
+        $massiveReader->setReadFilter($massiveFilter);
+        $massiveReader->setReadDataOnly(true);
+        $massivePHPExcel = $massiveReader->load($massiveTmpFile);
+        $massivePHPExcel->setActiveSheetIndex(0);
+        $massiveWorksheet = $massivePHPExcel->getActiveSheet();
+
+        $massiveHighestRow = $massiveWorksheet->getHighestRow();
+        $massiveHighestColumn = $massiveWorksheet->getHighestColumn();
+        $massiveHighestColumnIndex = PHPExcel_Cell::columnIndexFromString($massiveHighestColumn);
+        $massiveHighestColumn++;
+        // сгруппированный массив по названию и адресу точки
+        $tradePoints = array();
+
+        for ($rowIndex = 2; $rowIndex <= $massiveHighestRow; ++$rowIndex) {
+            $rowTradePointCode = trim($massiveWorksheet->getCell('F'.$rowIndex)->getValue());
+            $rowItemArticle = trim($massiveWorksheet->getCell('T'.$rowIndex)->getValue());
+            if (!isset($tradePoints[$rowTradePointCode])) {
+                $rowTradePointName = $massiveWorksheet->getCell('K'.$rowIndex)->getValue();
+                $rowTradePointAddress = $massiveWorksheet->getCell('L'.$rowIndex)->getValue();
+                // если наименование или адрес пустые, пропускаем
+                if (!empty($rowTradePointName) && !empty($rowTradePointAddress)) {
+                    $tradePoints[$rowTradePointCode] = array();
+                    $tradePoints[$rowTradePointCode]['name'] = $rowTradePointName;
+                    $tradePoints[$rowTradePointCode]['address'] = $rowTradePointAddress;
+                    $tradePoints[$rowTradePointCode]['items'] = array();
+                    foreach ($articles as $colName => $colArticles) {
+                        if (in_array($rowItemArticle, $colArticles)) {
+                            $tradePoints[$rowTradePointCode]['items'][$colName][$rowItemArticle] = 1;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                foreach ($articles as $colName => $colArticles) {
+                    if (in_array($rowItemArticle, $colArticles)) {
+                        $tradePoints[$rowTradePointCode]['items'][$colName][$rowItemArticle] = 1;
+                        break;
+                    }
+                }
+            }
+        }
+        unset($massiveReader);
+        unset($massivePHPExcel);
+
+        // New PHPExcel class
+        $newformFile = new PHPExcel();
+        // Set and get active sheet
+        $newformFile->setActiveSheetIndex(0);
+        $newformDataWorkSheet = $newformFile->getActiveSheet();
+        // Sheet title
+        $newformDataWorkSheet->setTitle('Данные для newform');
+
+        $newformLogWorkSheet = new PHPExcel_Worksheet($newformFile, 'Данные для newform по артикулам');
+        $newformMassiveDataWorkSheet = new PHPExcel_Worksheet($newformFile, 'Данные массива');
+
+        $newformFile->addSheet($newformLogWorkSheet, 1);
+        $newformFile->addSheet($newformMassiveDataWorkSheet, 2);
+
+        // Заголовки листов
+        $newformMassiveDataWorkSheet->setCellValue('H1', 'Код торговой точки');
+        $newformMassiveDataWorkSheet->setCellValue('I1', 'Название торговой точки');
+        $newformMassiveDataWorkSheet->setCellValue('J1', 'Адрес');
+        $newformDataWorkSheet->setCellValue('H1', 'Код торговой точки');
+        $newformDataWorkSheet->setCellValue('I1', 'Название торговой точки');
+        $newformDataWorkSheet->setCellValue('J1', 'Адрес');
+        $newformLogWorkSheet->setCellValue('H1', 'Код торговой точки');
+        $newformLogWorkSheet->setCellValue('I1', 'Название торговой точки');
+        $newformLogWorkSheet->setCellValue('J1', 'Адрес');
+        foreach ($newformColumnNames as $colIndex => $colName) {
+            $newformMassiveDataWorkSheet->setCellValue($colIndex.'1', $colName);
+            $newformDataWorkSheet->setCellValue($colIndex.'1', $colName);
+            $newformLogWorkSheet->setCellValue($colIndex.'1', $colName);
+        }
+        // Данные по артикулам
+        $rowIndex = 2;
+        foreach ($checkCustomers as $checkCustomerCode => $checkCustomer) {
+        	$newformLogWorkSheet->setCellValue('H'.$rowIndex, $checkCustomerCode);
+            $newformLogWorkSheet->setCellValue('I'.$rowIndex, $checkCustomer["name"]);
+            $newformLogWorkSheet->setCellValue('J'.$rowIndex, $checkCustomer["address"]);
+            if (isset($tradePoints[$checkCustomerCode])) {
+            	foreach ($tradePoints[$checkCustomerCode]["items"] as $colIndex => $colArticles) {
+            		$newformLogWorkSheet->setCellValue($colIndex.$rowIndex, implode(";", array_keys($colArticles)));
+	            }
+            }
+            $rowIndex++;
+        }
+
+        // суммируем знаения по колонке
+        foreach ($tradePoints as $tradePointKey => $tradePoint) {
+            foreach ($tradePoint["items"] as $colName => $colArticles) {
+                $summ = 0;
+                foreach ($colArticles as $article => $count) {
+                    $summ += $count;
+                }
+                if ($summ > 0) {
+                    $tradePoints[$tradePointKey]["items"][$colName] = $summ;
+                } else {
+                    unset($tradePoints[$tradePointKey]["items"][$colName]);
+                }
+            }
+        }
+        // Данные указанные в базе
+        $rowIndex = 2;
+        foreach ($checkCustomers as $checkCustomerCode => $checkCustomer) {
+        	$newformDataWorkSheet->setCellValue('H'.$rowIndex, $checkCustomerCode);
+            $newformDataWorkSheet->setCellValue('I'.$rowIndex, $checkCustomer["name"]);
+            $newformDataWorkSheet->setCellValue('J'.$rowIndex, $checkCustomer["address"]);
+            if (isset($tradePoints[$checkCustomerCode])) {
+            	foreach ($tradePoints[$checkCustomerCode]["items"] as $colIndex => $count) {
+	                $newformDataWorkSheet->setCellValue($colIndex.$rowIndex, $count);
+	            }
+            } else {
+            	$newformDataWorkSheet->getStyle('H'.$rowIndex)
+				    ->getFill()->setFillType(PHPExcel_Style_Fill::FILL_SOLID);
+				if (strpos( $checkCustomerCode, 'tmpCode') !== FALSE) {
+					$newformDataWorkSheet->getStyle('H'.$rowIndex)
+				    	->getFill()->getStartColor()->setARGB('FFFF0000');
+				} else {
+					$newformDataWorkSheet->getStyle('H'.$rowIndex)
+				    	->getFill()->getStartColor()->setARGB('FFFFFF00');
+				}
+            }
+            $rowIndex++;
+        }
+        // Все данные в массиве
+        $rowIndex = 2;
+        foreach ($tradePoints as $tradePointCode => $tradePoint) {
+        	$newformMassiveDataWorkSheet->setCellValue('H'.$rowIndex, $tradePointCode);
+            $newformMassiveDataWorkSheet->setCellValue('I'.$rowIndex, $tradePoint["name"]);
+            $newformMassiveDataWorkSheet->setCellValue('J'.$rowIndex, $tradePoint["address"]);
+            foreach ($tradePoint["items"] as $colIndex => $count) {
+                $newformMassiveDataWorkSheet->setCellValue($colIndex.$rowIndex, $count);
+            }
+            $rowIndex++;
+        }
+
+        //$newformLogWorkSheet->setCellValue('A1', 'Коды не найдены в массиве');
+        //$newformLogWorkSheet->setCellValue('A'.$logIndex, 'Коды не установлен в базе');
+        //$newformFile->setActiveSheetIndex(2);
+        //$newformFile->getActiveSheet()->getStyle('A1')->getFill()
+        //	->setFillType(PHPExcel_Style_Fill::FILL_SOLID)
+        //	->getStartColor()->setARGB('FFFFFF00');
+	    //$newformFile->getActiveSheet()->getStyle('A'.$rowIndex)->getFill()
+	    //	->setFillType(PHPExcel_Style_Fill::FILL_SOLID)
+	    //	->getStartColor()->setARGB('FFFF0000');
+        //$logIndex++;
+        //foreach ($checkCustomersWithEmptyCode as $code => $checkCustomer) {
+        //	$newformLogWorkSheet->setCellValue('A'.$logIndex, $code);
+        //	$newformLogWorkSheet->setCellValue('B'.$logIndex, $checkCustomer["name"]);
+        //	$newformLogWorkSheet->setCellValue('C'.$logIndex, $checkCustomer["address"]);
+        //	$logIndex++;
+        //}
+
+        $newformFileName = date('dmY-').uniqid('newform-data-').'.xls';
+        $newformFileNamePath = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$newformFileName;
+
+        //$newformFile->setActiveSheetIndex(0);
+        $objWriter = new PHPExcel_Writer_Excel5($newformFile);
+        $objWriter->save($newformFileNamePath);
+
+        $response = array();
+        // если error ругается bootstrap-fileinput
+        //$response["error"] = false;
+        $response["uploaded"] = 'OK';
+        $response["success"] = true;
+        //$response["files"] = $_FILES["xls"];
+        $response["filename"] = 'http://fabricant.pro/v2/reports/'.$newformFileName;
+        //$response["checkCustomers"] = $checkCustomers;
+        //$response["checkCustomersCount"] = count($checkCustomers);
+
+        //header('Content-Type: application/vnd.ms-excel');
+		//header('Content-Disposition: attachment;filename="newform.xls"');
+		//header('Cache-Control: max-age=0');
+        // Write file to the browser
+        //$objWriter = PHPExcel_IOFactory::createWriter($newformFile, 'Excel5');
+        //$objWriter->save('php://output');
+    }
+    catch (Exception $e) {
+        // Exception occurred. Make error flag true
+        $response["error"] = $e->getMessage();
+        $response["success"] = false;
+        $response["uploaded"] = 'ERROR';
+        $response["message"] = $e->getMessage();
+    }
+
+    echoResponse(200,$response);
+});
+
+class excelReadFilterByColumn implements PHPExcel_Reader_IReadFilter  {
+    private $_columns  = array();
+
+    /**  Get the list of rows and columns to read  */
+    public function __construct($columns) {
+        $this->_columns  = $columns;
+    }
+
+    public function readCell($column, $row, $worksheetName = '') {
+        //  Only read the rows and columns that were configured
+        if (in_array($column, $this->_columns)) {
+            return true;
+        }
+        return false;
+    } }
 
 //--------------------Uploads----------------------------
 
@@ -2882,7 +3285,7 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_products_kustuk".$_FILES["json"]["name"]."----------------");
+	error_log("-------------1c_products_kustuk----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -2899,290 +3302,291 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 	$user=$db_profile->getUserByPhone($phone);
 	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
 
+	if (!isset($_FILES["json"])) {
+		throw new Exception('Param json is missing');
+	}
+	// Check if the file is missing
+	if (!isset($_FILES["json"]["name"])) {
+		throw new Exception('Property name of json param is missing');
+	}
+	// Check the file size >100MB
+	if($_FILES["json"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
 
-	//try{
-
-		if (!isset($_FILES["json"])) {
-			throw new Exception('Param json is missing');
-		}
-		// Check if the file is missing
-		if (!isset($_FILES["json"]["name"])) {
-			throw new Exception('Property name of json param is missing');
-		}
-		// Check the file size >100MB
-		if($_FILES["json"]["size"] > 100*1024*1024) {
-			throw new Exception('File is too big');
-		}
-
-		$tmpFile = $_FILES["json"]["tmp_name"];
-
-		$filename = date('dmY').'-'.uniqid('1c_products_kustuk-').".json";
-		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
-
-		//Считываем закодированный файл json в строку
-		$data = file_get_contents($tmpFile);
-		//Декодируем строку из base64 в нормальный вид
-		$data = base64_decode($data);
-		
-		$incoming_products = json_decode($data,true);	
-        //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
-		unset($data);
-		
-		$db_fabricant = new DbHandlerFabricant();
-
-		$changed_products=array();
-		$created_products=array();
-		$not_changed_products=array();
-
-		$products=array();
-		
-		$count_of_products=0;
-		
-		error_log("incoming_products count=".count($incoming_products));
-
-		foreach ($incoming_products as $incoming_product) {
-		
-			$count_of_products++;
-		
-			$code=$incoming_product["code"];
-			$nomenclature=$incoming_product["name"];
-			$name_full=$incoming_product["name_full"];
-			$price=$incoming_product["price"];
-			$article=$incoming_product["article"];
-			//$units_pairs_string=$incoming_product["units"];
-
-			//Если столбцы не указаны
-			if(!isset($code))$code=null;
-			if(!isset($nomenclature))$nomenclature=null;
-			if(!isset($name_full))$name_full=null;
-			if(!isset($price))$price=0;
-			if(!isset($article))$article=null;
-			//if(!isset($units_pairs_string))$units_pairs_string=null;
-
-			//Превращаем юниты в массив
-			//$info_units=makeUnitsFromString($units_pairs_string);
-
-			$product=$db_fabricant->getProductByCode($contractorid,$code);
-
-			//Если код продукта не существует в контракторе, создаем новый продукт
-			if(!isset($product)){
-
-				$product=array();
-
-				$product["contractorid"]=$contractorid;
-				$product["code1c"]=$code;
-				$product["name"]=$nomenclature;
-				$product["price"]=$price;
-				$product["article"]=$article;
-
-				$product["info"] = array(
-				  'name' => array(
-					'text'=>$nomenclature
-				  ),
-				  'name_full' => array(
-					'text'=>$name_full
-				  ),
-				  'price' => $price
-				);
-
-				//if(count($info_units)>0)$product["info"]["units"]=$info_units;
-
-				$product["status"]=2;
-
-				$created_products[]=$product;
-				
-				//error_log($count_of_products.". code=".$code." price=".$price." article=".$article." created");
-			}else{
-
-				$changed_flag=false;//Нужен в конце чтобы определить нужно ли обновить товар
-				$changed_reason="";
-
-				$product_info=json_decode($product["info"],true);
-
-				//Проверка артикла
-				if(strcmp($product["article"],$article)){
-						$product["article"]=$article;
-						$product["article_changed"]=true;
-						$changed_flag=true;
-						$changed_reason.="article, ";
-				}else{
-					$product["article_changed"]=false;
-				}
-
-				//Проверка цены
-				if($product["price"]!=$price){
-
-						$product["price"]=$price;
-						$product_info["price"]=$price;
-						$changed_flag=true;
-						$changed_reason.="price, ";
-				}
-
-				//Проверка наименования
-				if(strcmp($product["name"],$nomenclature)){
-						$product["name"]=$nomenclature;
-						$changed_flag=true;
-						$changed_reason.="name, ";
-				}
-
-				//Проверка полного наименования
-				if( !isset($product_info["name_full"]) || !isset($product_info["name_full"]["text"])  || strcmp($product_info["name_full"]["text"],$name_full)){
-
-						$product_info["name_full"]=array(
-							"text"=>$name_full
-						);
-
-
-						$changed_flag=true;
-						$changed_reason.="name_full, ";
-				}
-
-				//Проверка юнитов, сравнение идет только по полям value и label
-				/*$units_changed_flag=false;
-				try{
-
-					//Проверка на совпадение количества юнитов
-					if(count($product_info["units"])!=count($info_units)){
-						$units_changed_flag=true;
-						throw new Exception("Other units count");
-					}
-
-					//Проверка label и value каждого юнита с каждым юнитом по отдельности
-					for($i=0;$i<count($info_units);$i++){
-						$found=false;
-						for($j=0;$j<count($info_units);$j++){
-							if( (strcmp($info_units[$i]["value"],$product_info["units"][$i]["value"])==0) && (strcmp($info_units[$i]["label"],$product_info["units"][$i]["label"] )==0) ){
-								$found=true;
-								break;
-							}
-						}
-
-						if(!$found){
-							$units_changed_flag=true;
-							throw new Exception("Label or value of unit is other:".
-								" old_value=".$product_info["units"][$i]["value"]." new_value=".$info_units[$i]["value"].
-								" old_label=".$product_info["units"][$i]["label"]." new_label=".$info_units[$i]["label"]
-							);
-						}
-					}
-
-				}catch(Exception $e){
-					if($units_changed_flag){
-						$product_info["units"]=$info_units;
-						$changed_flag=true;
-						$changed_reason.="units(".$e->getMessage()."), ";
-					}else{
-						throw $e;//Значит настоящая ошибка мы выводим ее наружу
-					}
-
-				}*/
-
-				//Продукт минимум в одном месте изменен, тогда меняем продукт на новый
-				if($changed_flag){
-
-					$product["info"]=json_encode($product_info,JSON_UNESCAPED_UNICODE);
-					$product["changed_reason"]=$changed_reason;
-
-					$changed_products[]=$product;
-					
-					//error_log($count_of_products.". code=".$code." price=".$price." article=".$article." changed");
-				}else{
-					//Продукт существует и не изменен
-					$not_changed_products[]=$product;
-					
-					//error_log($count_of_products.". code=".$code." price=".$price." article=".$article);
-				}
-				
-				
-
-			}
-
-			
-
-		}
-		error_log(" ");
-
-
-		if($count_of_products>0){
-			error_log("count_of_products=$count_of_products");
-			error_log("created_products=".count($created_products));
-			error_log("changed_products=".count($changed_products));
-			error_log("not_changed_products=".count($not_changed_products));
-
-			$response["count_of_products"] = $count_of_products;
-			$response["created_products"] = count($created_products);
-			$response["changed_products"] = count($changed_products);
-			$response["not_changed_products"] = count($not_changed_products);
-		}
-
-		if(count($created_products)>0){
-			error_log("------------------created_products=".count($created_products)."/$count_of_products------------------");
-
-			$index=0;
-			foreach($created_products as $product){
-				$index++;
-				$product["id"]=$db_fabricant->createProduct($product["contractorid"], $product["name"], $product["price"], json_encode($product["info"],JSON_UNESCAPED_UNICODE), $product["status"], $product["code1c"]);
-				
-				//Нет параметра для артикула в методе updateProduct, поэтому артикул проверяем и меняем отдельно
-				if( isset($product["article"]) ){
-					$db_fabricant->updateProductArticle($product["id"], $product["article"]);
-				}
-				
-				//error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']." article=".$product['article']);
-				
-			}
-
-		}
-
-		if(count($changed_products)>0){
-			error_log("------------------changed_products=".count($changed_products)."/$count_of_products------------------");
-
-			$index=0;
-			foreach($changed_products as $product){
-				$index++;
-				$db_fabricant->updateProduct($product["id"], $product["name"], $product["price"], $product["info"], $product["status"]);
-
-				//Нет параметра для артикула в методе updateProduct, поэтому артикул проверяем и меняем отдельно
-				if( isset($product["article_changed"]) && $product["article_changed"] ){
-					$db_fabricant->updateProductArticle($product["id"], $product["article"]);
-				}
-
-				//error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']." article=".$product['article']." changed_reason:[ ".$product['changed_reason']." ]");//.(isset($product['info'])&&isset($product['info']['units']))?" units=".count($product['info']['units']));
-			}
-
-		}
-
-		if(count($not_changed_products)>0){
-			error_log("------------------not_changed_products=".count($not_changed_products)."/$count_of_products------------------");
-
-			$index=0;
-			foreach($not_changed_products as $product){
-				$index++;
-				if(isset($product["article"]))$product['article']="missing";
-				//error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']);//." article=".$product['article']);//.(isset($product['info'])&&isset($product['info']['units']))?" units=".count($product['info']['units']));
-			}
-
-		}
-
-		//Уведомляем по коммуникатору измененные продукты
-		$merged_products=array_merge($created_products,$changed_products);
-		if(count($merged_products)>0){
-			consoleCommandNotifyProducts($merged_products);
-		}
-
-	//} catch (Exception $e) {
-		// Exception occurred. Make error flag true
-		//$response["error"] = true;
-		//$response["message"] = $e->getMessage();
-		//$response["success"] = 0;
-		//$response = $e->getMessage();
-	//}
+	$tmpFile = $_FILES["json"]["tmp_name"];
+	//Считываем закодированный файл json в строку
+	$data = file_get_contents($tmpFile);
+	//Декодируем строку из base64 в нормальный вид
+	$data = base64_decode($data);
 	
-		$response["error"] = false;
-		$response["message"] = "Import successfully done";
-		$response["success"] = 1;
+	//Запись в /v2/reports для лога
+	try{
+		$filename = '1c_products_kustuk'.date(" Y-m-d H-i-s ").uniqid().".json";
+		error_log("logged in file: ".$filename);		
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;		
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+			@fwrite($fp, $data);
+			@fclose($fp);
+		}
+	}catch(Exception $e){
+		error_log("error when log in file /v2/reports/: ".$e->getMessage());
+	}
 
-		echoResponse(200, $response);
+	$incoming_products = json_decode($data,true);
+
+	//error_log("data: ".$data);
+
+	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+	unset($data);
+
+	$db_fabricant = new DbHandlerFabricant();
+
+	$changed_products=array();
+	$created_products=array();
+	$not_changed_products=array();
+
+	$products=array();
+
+	$count_of_products=0;
+
+	error_log("incoming_products count=".count($incoming_products));
+
+	foreach ($incoming_products as $incoming_product) {
+
+		$count_of_products++;
+
+		$code=$incoming_product["code"];
+		$nomenclature=$incoming_product["name"];
+		$name_full=$incoming_product["name_full"];
+		$price=$incoming_product["price"];
+		$article=$incoming_product["article"];
+		//$units_pairs_string=$incoming_product["units"];
+
+		//Если столбцы не указаны
+		if(!isset($code))$code=null;
+		if(!isset($nomenclature))$nomenclature=null;
+		if(!isset($name_full))$name_full=null;
+		if(!isset($price))$price=0;
+		if(!isset($article))$article=null;
+		//if(!isset($units_pairs_string))$units_pairs_string=null;
+
+		//Превращаем юниты в массив
+		//$info_units=makeUnitsFromString($units_pairs_string);
+
+		$product=$db_fabricant->getProductByCode($contractorid,$code);
+
+		//Если код продукта не существует в контракторе, создаем новый продукт
+		if(!isset($product)){
+
+			$product=array();
+
+			$product["contractorid"]=$contractorid;
+			$product["code1c"]=$code;
+			$product["name"]=$nomenclature;
+			$product["price"]=$price;
+			$product["article"]=$article;
+
+			$product["info"] = array(
+			  'name' => array(
+				'text'=>$nomenclature
+			  ),
+			  'name_full' => array(
+				'text'=>$name_full
+			  ),
+			  'price' => $price
+			);
+
+			//if(count($info_units)>0)$product["info"]["units"]=$info_units;
+
+			$product["status"]=2;
+
+			$created_products[]=$product;
+
+			//error_log($count_of_products.". code=".$code." price=".$price." article=".$article." created");
+		}else{
+
+			$changed_flag=false;//Нужен в конце чтобы определить нужно ли обновить товар
+			$changed_reason="";
+
+			$product_info=json_decode($product["info"],true);
+
+			//Проверка артикла
+			if(strcmp($product["article"],$article)){
+					$product["article"]=$article;
+					$product["article_changed"]=true;
+					$changed_flag=true;
+					$changed_reason.="article, ";
+			}else{
+				$product["article_changed"]=false;
+			}
+
+			//Проверка цены
+			if($product["price"]!=$price){
+
+					$product["price"]=$price;
+					$product_info["price"]=$price;
+					$changed_flag=true;
+					$changed_reason.="price, ";
+			}
+
+			//Проверка наименования
+			if(strcmp($product["name"],$nomenclature)){
+					$product["name"]=$nomenclature;
+					$changed_flag=true;
+					$changed_reason.="name, ";
+			}
+
+			//Проверка полного наименования
+			if( !isset($product_info["name_full"]) || !isset($product_info["name_full"]["text"])  || strcmp($product_info["name_full"]["text"],$name_full)){
+
+					$product_info["name_full"]=array(
+						"text"=>$name_full
+					);
+
+
+					$changed_flag=true;
+					$changed_reason.="name_full, ";
+			}
+
+			//Проверка юнитов, сравнение идет только по полям value и label
+			/*$units_changed_flag=false;
+			try{
+
+				//Проверка на совпадение количества юнитов
+				if(count($product_info["units"])!=count($info_units)){
+					$units_changed_flag=true;
+					throw new Exception("Other units count");
+				}
+
+				//Проверка label и value каждого юнита с каждым юнитом по отдельности
+				for($i=0;$i<count($info_units);$i++){
+					$found=false;
+					for($j=0;$j<count($info_units);$j++){
+						if( (strcmp($info_units[$i]["value"],$product_info["units"][$i]["value"])==0) && (strcmp($info_units[$i]["label"],$product_info["units"][$i]["label"] )==0) ){
+							$found=true;
+							break;
+						}
+					}
+
+					if(!$found){
+						$units_changed_flag=true;
+						throw new Exception("Label or value of unit is other:".
+							" old_value=".$product_info["units"][$i]["value"]." new_value=".$info_units[$i]["value"].
+							" old_label=".$product_info["units"][$i]["label"]." new_label=".$info_units[$i]["label"]
+						);
+					}
+				}
+
+			}catch(Exception $e){
+				if($units_changed_flag){
+					$product_info["units"]=$info_units;
+					$changed_flag=true;
+					$changed_reason.="units(".$e->getMessage()."), ";
+				}else{
+					throw $e;//Значит настоящая ошибка мы выводим ее наружу
+				}
+
+			}*/
+
+			//Продукт минимум в одном месте изменен, тогда меняем продукт на новый
+			if($changed_flag){
+
+				$product["info"]=json_encode($product_info,JSON_UNESCAPED_UNICODE);
+				$product["changed_reason"]=$changed_reason;
+
+				$changed_products[]=$product;
+
+				//error_log($count_of_products.". code=".$code." price=".$price." article=".$article." changed");
+			}else{
+				//Продукт существует и не изменен
+				$not_changed_products[]=$product;
+
+				//error_log($count_of_products.". code=".$code." price=".$price." article=".$article);
+			}
+
+
+
+		}
+
+
+
+	}
+	error_log(" ");
+
+
+	if($count_of_products>0){
+		error_log("count_of_products=$count_of_products");
+		error_log("created_products=".count($created_products));
+		error_log("changed_products=".count($changed_products));
+		error_log("not_changed_products=".count($not_changed_products));
+
+		$response["count_of_products"] = $count_of_products;
+		$response["created_products"] = count($created_products);
+		$response["changed_products"] = count($changed_products);
+		$response["not_changed_products"] = count($not_changed_products);
+	}
+
+	if(count($created_products)>0){
+		error_log("------------------created_products=".count($created_products)."/$count_of_products------------------");
+
+		$index=0;
+		foreach($created_products as $product){
+			$index++;
+			$product["id"]=$db_fabricant->createProduct($product["contractorid"], $product["name"], $product["price"], json_encode($product["info"],JSON_UNESCAPED_UNICODE), $product["status"], $product["code1c"]);
+
+			//Нет параметра для артикула в методе updateProduct, поэтому артикул проверяем и меняем отдельно
+			if( isset($product["article"]) ){
+				$db_fabricant->updateProductArticle($product["id"], $product["article"]);
+			}
+
+			error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']." article=".$product['article']);
+
+		}
+
+	}
+
+	if(count($changed_products)>0){
+		error_log("------------------changed_products=".count($changed_products)."/$count_of_products------------------");
+
+		$index=0;
+		foreach($changed_products as $product){
+			$index++;
+			$db_fabricant->updateProduct($product["id"], $product["name"], $product["price"], $product["info"], $product["status"]);
+
+			//Нет параметра для артикула в методе updateProduct, поэтому артикул проверяем и меняем отдельно
+			if( isset($product["article_changed"]) && $product["article_changed"] ){
+				$db_fabricant->updateProductArticle($product["id"], $product["article"]);
+			}
+
+			error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']." article=".$product['article']." changed_reason:[ ".$product['changed_reason']." ]");//.(isset($product['info'])&&isset($product['info']['units']))?" units=".count($product['info']['units']));
+		}
+
+	}
+
+	if(count($not_changed_products)>0){
+		error_log("------------------not_changed_products=".count($not_changed_products)."/$count_of_products------------------");
+
+		$index=0;
+		foreach($not_changed_products as $product){
+			$index++;
+			if(isset($product["article"]))$product['article']="missing";
+			error_log($index.". id=".$product['id'].". code=".$product['code1c']." price=".$product['price']);//." article=".$product['article']);//.(isset($product['info'])&&isset($product['info']['units']))?" units=".count($product['info']['units']));
+		}
+
+	}
+
+	//Уведомляем по коммуникатору измененные продукты
+	$merged_products=array_merge($created_products,$changed_products);
+	if(count($merged_products)>0){
+		consoleCommandNotifyProducts($merged_products);
+	}
+
+	$response["error"] = false;
+	$response["message"] = "Success";
+	$response["success"] = 1;
+
+	echoResponse(200, $response);
 });
 
 /**
@@ -3199,7 +3603,7 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_products_rest_kustuk".$_FILES["json"]["name"]."----------------");
+	error_log("-------------1c_products_rest_kustuk----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -3216,58 +3620,59 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 	$user=$db_profile->getUserByPhone($phone);
 	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
 
-	//try{
+	if (!isset($_FILES["json"])) {
+		throw new Exception('Param json is missing');
+	}
+	// Check if the file is missing
+	if (!isset($_FILES["json"]["name"])) {
+		throw new Exception('Property name of json param is missing');
+	}
+	// Check the file size >100MB
+	if($_FILES["json"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
 
-		if (!isset($_FILES["json"])) {
-			throw new Exception('Param json is missing');
+	$tmpFile = $_FILES["json"]["tmp_name"];	
+	//Считываем закодированный файл json в строку
+	$data = file_get_contents($tmpFile);
+	//Декодируем строку из base64 в нормальный вид
+	$data = base64_decode($data);
+
+	//Запись в /v2/reports для лога
+	try{
+		$filename = '1c_products_rest_kustuk'.date(" Y-m-d H-i-s ").uniqid();
+		error_log("logged in file: ".$filename.".json");		
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename.".json";		
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+			@fwrite($fp, $data);
+			@fclose($fp);
 		}
-		// Check if the file is missing
-		if (!isset($_FILES["json"]["name"])) {
-			throw new Exception('Property name of json param is missing');
-		}
-		// Check the file size >100MB
-		if($_FILES["json"]["size"] > 100*1024*1024) {
-			throw new Exception('File is too big');
-		}
+	}catch(Exception $e){
+		error_log("error when log in file /v2/reports/: ".$e->getMessage());
+	}
 
-		$tmpFile = $_FILES["json"]["tmp_name"];
+	$incoming_products = json_decode($data,true);
 
-		$filename = date('dmY').'-'.uniqid('1c_products_rest_kustuk-').".json";
-		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+	unset($data);
 
-		//Считываем закодированный файл json в строку
-		$data = file_get_contents($tmpFile);
-		//Декодируем строку из base64 в нормальный вид
-		$data = base64_decode($data);
-		
-		/*if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
-            @fwrite($fp, $data);
-            @fclose($fp);
-			$success=true;
-        }*/
-		
-		$incoming_products = json_decode($data,true);
-		
-        //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
-		unset($data);
+	$db_fabricant = new DbHandlerFabricant();
 
+	$count_of_products=0;
+	$count_of_unknown_products=0;
 
-		$db_fabricant = new DbHandlerFabricant();
+	$success_products=array();
+	$changed_products=array();
+	$changed_products_for_rest=array();
 
+	error_log("incoming rest products count=".count($incoming_products));
 
-		$count_of_products=0;
+	foreach ($incoming_products as $incoming_product) {
 
+		$count_of_products++;
 
-		$count_of_changed_products=0;
-		$count_of_products=0;
-		$count_of_unknown_products=0;
-		
-		$changed_products=array();
+		try{
 
-		foreach ($incoming_products as $incoming_product) {
-		
-			$count_of_products++;
-		
 			$code=$incoming_product["code"];
 			$rest=$incoming_product["rest"];
 
@@ -3275,10 +3680,27 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 
 			//Если код продукта не существует в контракторе, создаем новый продукт
 			if(!isset($product)){
-				
+
 				error_log("$count_of_products. Product code=".$code." rest=".$rest." missing");
 				$count_of_unknown_products++;
 				continue;
+			}
+
+			//Берем основные остатки из базы
+			$rest_string=$db_fabricant->getProductRestById($product["id"]);
+			$rest_array=json_decode($rest_string,true);
+
+			if((!isset($rest_array["main"]))||($rest_array["main"]!=$rest)){
+
+				$rest_array["main"]=$rest;
+				$rest_string=json_encode($rest_array,JSON_UNESCAPED_UNICODE);
+				$db_fabricant->setProductRestById($product["id"],$rest_string);
+
+				$rest_product=array();
+				$rest_product["productid"]=$product["id"];
+				$rest_product["rest"]=$rest_string;
+				$changed_products_for_rest[]=$rest_product;
+
 			}
 
 			//Находим минимальный остаток
@@ -3288,40 +3710,128 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 				//Продукт только-что появился в наличии
 				error_log("$count_of_products. Product code=".$code." id=".$product["id"]." reciepte rest=".$rest." min_rest=".$min_rest);
 				$db_fabricant->makeProductInStock($product["id"]);
-				consoleCommandProductUpdated($product["id"]);
-				$count_of_changed_products++;
+				//consoleCommandProductUpdated($product["id"]);
 				$changed_products[]=$product;
 			}else if( ($rest<=$min_rest)&&(isProductInStock($product)==true) ){
 				//Продукт только-что закончился
 				error_log("$count_of_products. Product code=".$code." id=".$product["id"]." not_in_stock rest=".$rest." min_rest=".$min_rest);
 				$db_fabricant->makeProductNotInStock($product["id"]);
-				consoleCommandProductUpdated($product["id"]);
-				$count_of_changed_products++;
+				//consoleCommandProductUpdated($product["id"]);
 				$changed_products[]=$product;
 			}else{
-				error_log("$count_of_products. Product code=".$code." id=".$product["id"]." status_remain(".isProductInStock($product).") rest=".$rest." min_rest=".$min_rest);
+				error_log("$count_of_products. Product code=".$code." id=".$product["id"]." is_in_stock=".isProductInStock($product)." rest=".$rest." min_rest=".$min_rest);
+			}
+			
+			$success_products[]=$code;
+
+		}catch(Exception $e){
+			error_log($e->getMessage());
+		}
+
+	}
+	
+	error_log("incoming rest products count=".count($incoming_products)." above");
+	error_log("stocking changed products count=".count($changed_products)." (not_in_stock/in_stock)");
+	error_log("main rest changed products count=".count($changed_products_for_rest));
+	error_log("unknown products count=".$count_of_unknown_products);
+	error_log("success products count=".count($success_products));
+	error_log(" ");
+	
+	//Уведомляем по коммуникатору измененные продукты
+	if(count($changed_products)>0){
+		//consoleCommandNotifyProducts($changed_products); не уведомляем пока, только во время первого запуска получают
+	}
+
+	//Уведомляем по коммуникатору изменение остатков
+	if(count($changed_products_for_rest)>0){
+		//consoleCommandRecalculateProductsRest($contractorid,$changed_products_for_rest); не уведомляем пока, только во время первого запуска получают
+	}
+
+	$response["error"] = false;
+	$response["message"] = "Import successfully done";
+	$response["success"] = 1;
+	$response["success_products"] = $success_products;
+	
+	//Запись в /v2/reports для лога
+	try{
+		$filename=$filename."_success";
+		error_log("success logged in file: ".$filename.".json");		
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename.".json";		
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+			@fwrite($fp, $data);
+			@fclose($fp);
+		}
+	}catch(Exception $e){
+		error_log("error when log in file /v2/reports/: ".$e->getMessage());
+	}
+	
+	echoResponse(200, $response);
+});
+
+/**
+ * Высталяет наличие или не-наличие всем товарам, согласно остаткам
+ * method GET
+ */
+$app->get('/rest_stocking_actualize_kustuk', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	$contractorid=127;
+
+	error_log("-------------rest_stocking_actualize_kustuk----------------");
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+
+	//try{
+
+		$changed_products=array();
+
+		$products=$db_fabricant->getProductsOfContractor($contractorid);
+
+		$count_of_products=0;
+
+		foreach ($products as $product) {
+
+			$count_of_products++;
+
+			try{
+
+				//Берем основные остатки из базы
+				$rest_string=$db_fabricant->getProductRestById($product["id"]);
+				$rest_array=json_decode($rest_string,true);
+
+				$rest_main=0;
+
+				if( isset($rest_array["main"]) ){
+					$rest_main=$rest_array["main"];
+				}
+
+				//Находим минимальный остаток
+				$min_rest=getMinRest($product);
+
+				if( ($rest_main>$min_rest)&&(isProductInStock($product)==false) ){
+					//Продукт только-что появился в наличии
+					error_log("$count_of_products. Product id=".$product["id"]." reciepte rest_main=".$rest_main." min_rest=".$min_rest);
+					$db_fabricant->makeProductInStock($product["id"]);
+					$changed_products[]=$product;
+				}else if( ($rest_main<=$min_rest)&&(isProductInStock($product)==true) ){
+					//Продукт только-что закончился
+					error_log("$count_of_products. Product id=".$product["id"]." not_in_stock rest_main=".$rest_main." min_rest=".$min_rest);
+					$db_fabricant->makeProductNotInStock($product["id"]);
+					$changed_products[]=$product;
+				}else{
+					error_log("$count_of_products. Product id=".$product["id"]." is_in_stock=".isProductInStock($product)." rest_main=".$rest_main." min_rest=".$min_rest);
+				}
+
+			}catch(Exception $e){
+				error_log($e->getMessage());
 			}
 
 		}
-		error_log(" ");
 
-		if($count_of_products>0){
-			error_log("count_of_products=$count_of_products");
-			$response["all"] = $count_of_products;
-		}
-		if($count_of_changed_products>0){
-			error_log("count_of_changed_products=$count_of_changed_products");
-			$response["changed"] = $count_of_changed_products;
-		}
-		if($count_of_unknown_products>0){
-			error_log("count_of_missing_products=$count_of_unknown_products");
-			$response["unknown"] = $count_of_unknown_products;
-		}
-		
-		//Уведомляем по коммуникатору измененные продукты	
-		if(count($changed_products)>0){
-			consoleCommandNotifyProducts($changed_products);
-		}
+		error_log("all products count=".count($products));
+		error_log("changed products count=".count($changed_products)." (not_in_stock/in_stock)");
 
 	//} catch (Exception $e) {
 		// Exception occurred. Make error flag true
@@ -3330,10 +3840,12 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 		//$response["success"] = 0;
 		//$response = $e->getMessage();
 	//}
-	
+
 		$response["error"] = false;
-		$response["message"] = "Import successfully done";
-		$response["success"] = 0;
+		$response["success"] = 1;
+		$response["message"] = "Rest stocking actualized successfully";
+		$response["all_products_count"] = count($products);
+		$response["changed_products_count"] = count($changed_products);
 
 		echoResponse(200, $response);
 });
@@ -3355,7 +3867,7 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 
 	//Формируем timestamp для последних 3-х дней
 	$date = date("M-d-Y", mktime(0, 0, 0, date('m'), date('d')-3, date('Y')));
-	$last_timestamp=strtotime($date);//-(3*60*60*24);
+	$last_timestamp=strtotime($date)-(3*60*60*24);
 
 	error_log("-------------1c_orders_kustuk----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."_lasttimestamp=".$last_timestamp."|");
@@ -3379,125 +3891,125 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 	//Проверяем доступ к группе
 	$user=$db_profile->getUserByPhone($phone);
 	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
-	
+
 	//Проверка доступна ли 1С синхронизация у этого поставщика
 	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
-	
-	//Берем флаг запрет импорта заказов без визы  
+
+	//Берем флаг запрет импорта заказов без визы
 	$contractor=$db_profile->getGroupById($contractorid)[0];
 	$contractor_info=(isset($contractor["info"]))?json_decode($contractor["info"],true):null;
-	
-	$synchronize_only_orders_with_visa=( isset($contractor_info["synchronize_only_orders_with_visa"]) && $contractor_info["synchronize_only_orders_with_visa"] );	
+
+	$synchronize_only_orders_with_visa=( isset($contractor_info["synchronize_only_orders_with_visa"]) && $contractor_info["synchronize_only_orders_with_visa"] );
 	error_log("synchronize_only_orders_with_visa=".$synchronize_only_orders_with_visa);
-	
+
 	$orders=$db_fabricant->getOrdersDeltaOfContractor($contractorid,$last_timestamp);
-	error_log("orders count: ".count($orders));
-	
+	//error_log("orders count: ".count($orders));
+
 	$outgoing_orders=array();
-	
+
 	foreach($orders as $order){
-	
+
 		$record=json_decode($order["record"],true);
-		
+
 		/*error_log("");
 		error_log("orderid: ".$order["id"]);
 		error_log("status: ".$order["status"]);
 		error_log("code1c: ".$order["code1c"]);*/
-		
-		if(isset($record["visa"]))error_log("record: ".$record["visa"]);
-		
+
+		//if(isset($record["visa"]))error_log("record: ".$record["visa"]);
+
 		//Проверка условий для импрта заказа
 		if( $order["status"]!=1 || !empty($order["code1c"]) ){
 			//error_log("abort: status or code1c are not correct");
 			continue;
 		}
-		
+
 		//Если стоит запрет на импорт заказа без визы
 		if( $synchronize_only_orders_with_visa && ( !isset($record["visa"]) || !$record["visa"] ) ){
 			//error_log("abort: visa is not set");
 			continue;
 		}
-		
+
 		$outgoing_order = array();
-		$outgoing_order["orderid"]=$order["id"];		
+		$outgoing_order["orderid"]=$order["id"];
 		$outgoing_order["ordercode"]=$order["code1c"];
 		$outgoing_order["date"]=date('Y-m-d H:i:s',$order["created_at"]);
 		$outgoing_order["status"]=$order["status"];
-		
+
 		$outgoing_order["customerid"]=$order["customerid"];
 		if(isset($record["customercode"])){
 			$outgoing_order["customercode"]=$record["customercode"];
 		}else{
 			$temp_customercode=$db_profile->getCustomerCodeInContractorById($order["customerid"],$order["contractorid"]);
-			
+
 			if(isset($temp_customercode)){
 				$outgoing_order["customercode"]=$temp_customercode;
-			}else{				
+			}else{
 				$outgoing_order["customercode"]=null;
 				//error_log("abort: customercode is not set");
 				//Заказы без кода контрагента не отправляем
 				continue;
 			}
 		}
-		
+
 		$outgoing_order["customerName"]=$record["customerName"];
-		
+
 		$outgoing_order["customerUserId"]=$record["customerUserId"];
 		if(isset($record["customerUserCode"])){
 			$outgoing_order["customerUserCode"]=$record["customerUserCode"];
 		}else{
 			$temp_customerUserCode=$db_profile->getUserCodeInContractorById($record["customerUserId"],$order["contractorid"]);
-			
+
 			if(isset($temp_customerUserCode)){
 				$outgoing_order["customerUserCode"]=$temp_customerUserCode;
-			}else{				
+			}else{
 				$outgoing_order["customerUserCode"]=null;
 			}
 		}
 		$outgoing_order["customerUserName"]=$record["customerUserName"];
-		
-		
+
+
 		if( isset($record["visa"]) && $record["visa"] ){
 			$outgoing_order["visaAddedUserId"]=$record["visaAddedUserId"];
 			if(!empty($record["visaAddedUserCode"])){
 				$outgoing_order["visaAddedUserCode"]=$record["visaAddedUserCode"];
 			}else{
 				$temp_visaAddedUserCode=$db_profile->getUserCodeInContractorById($record["visaAddedUserId"],$order["contractorid"]);
-				
+
 				if(!empty($temp_visaAddedUserCode)){
 					$outgoing_order["visaAddedUserCode"]=$temp_visaAddedUserCode;
 				}else{
 					$outgoing_order["visaAddedUserCode"]=null;
 				}
 			}
-			
+
 			$outgoing_order["visaAddedUserName"]=$record["visaAddedUserName"];
 			$outgoing_order["visa"]=true;
 		}else{
 			$outgoing_order["visa"]=false;
 		}
-		
-		
+
+
 		if(isset($record["address"])){
 			$outgoing_order["address"]=$record["address"];
 		}else{
 			$outgoing_order["address"]=null;
 		}
-		
+
 		if(isset($record["phone"])){
 			$outgoing_order["phone"]=$record["phone"];
 		}else{
 			$outgoing_order["phone"]=null;
 		}
-		
+
 		if(isset($record["comment"])){
 			$outgoing_order["comment"]="Фабрикант: ".$record["comment"];
 		}else{
 			$outgoing_order["comment"]="Фабрикант";
 		}
-		
+
 		$outgoing_items=array();
-		
+
 		foreach ($record["items"] as $item) {
 
 			$outgoing_item = array();
@@ -3515,13 +4027,18 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 
 			$outgoing_items[]=$outgoing_item;
 		}
-		
+
 		$outgoing_order["items"]=$outgoing_items;
+
+		error_log((count($outgoing_orders)+1).". orderid=".$outgoing_order["orderid"]." customerid=".$outgoing_order["customerid"]." items_count=".count($outgoing_items)." date:".$outgoing_order["date"]);
+
 		$outgoing_orders[]=$outgoing_order;
-		
+
 	}
-	
-	error_log("outgoing_orders: ".json_encode($outgoing_orders,JSON_UNESCAPED_UNICODE));
+
+	error_log("outgoing_orders count=".count($outgoing_orders));
+
+	//error_log("outgoing_orders: ".json_encode($outgoing_orders,JSON_UNESCAPED_UNICODE));
 
 	echoResponse(200, $outgoing_orders);
 
@@ -3541,7 +4058,7 @@ $app->post('/1c_orders_created_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_orders_created_kustuk".$_FILES["json"]["name"]."----------------");
+	error_log("-------------1c_orders_created_kustuk----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -3555,55 +4072,64 @@ $app->post('/1c_orders_created_kustuk', function() use ($app) {
 		echoResponse(200,$response);
 		return;
 	}
-	
+
 	$user=$db_profile->getUserByPhone($phone);
 	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
-	
+
 	//Проверка доступна ли 1С синхронизация у этого поставщика
 	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
 
+	if (!isset($_FILES["json"])) {
+		throw new Exception('Param json is missing');
+	}
+	// Check if the file is missing
+	if (!isset($_FILES["json"]["name"])) {
+		throw new Exception('Property name of json param is missing');
+	}
+	// Check the file size >100MB
+	if($_FILES["json"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
+
+	$tmpFile = $_FILES["json"]["tmp_name"];
+	
+	//Считываем закодированный файл json в строку
+	$data = file_get_contents($tmpFile);
+	//Декодируем строку из base64 в нормальный вид
+	$data = base64_decode($data);
+	
+	//Запись в /v2/reports для лога
+	try{
+		$filename = '1c_orders_created_kustuk'.date(" Y-m-d H-i-s ").uniqid().".json";
+		error_log("logged in file: ".$filename);		
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;		
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+			@fwrite($fp, $data);
+			@fclose($fp);
+		}
+	}catch(Exception $e){
+		error_log("error when log in file /v2/reports/: ".$e->getMessage());
+	}
+	
+	$incoming_orders = json_decode($data,true);
+
+	if(!isset($incoming_orders)){
+		throw new Exception('File is not json');
+	}
+	
+	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+	unset($data);
 
 	$count_of_braches=0;
 
-	//try{
+	$success_orders=array();
 
-		if (!isset($_FILES["json"])) {
-			throw new Exception('Param json is missing');
-		}
-		// Check if the file is missing
-		if (!isset($_FILES["json"]["name"])) {
-			throw new Exception('Property name of json param is missing');
-		}
-		// Check the file size >100MB
-		if($_FILES["json"]["size"] > 100*1024*1024) {
-			throw new Exception('File is too big');
-		}
+	foreach ($incoming_orders as $incoming_order) {
 
-		$tmpFile = $_FILES["json"]["tmp_name"];
+		$count_of_braches++;
 
-		$filename = date('dmY').'-'.uniqid('1c_orders_created_kustuk-').".json";
-		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+		try{
 
-		//Считываем закодированный файл json в строку
-		$data = file_get_contents($tmpFile);
-		//Декодируем строку из base64 в нормальный вид
-		$data = base64_decode($data);
-		
-		$incoming_orders = json_decode($data,true);
-		
-		if(!isset($incoming_orders)){
-			throw new Exception('File is not json');
-		}
-		
-
-        //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
-		unset($data);
-
-		
-		foreach ($incoming_orders as $incoming_order) {
-
-			$count_of_braches++;
-			
 			$id=$incoming_order["id"];
 			$code=$incoming_order["code"];
 			$date=$incoming_order["date"];
@@ -3611,28 +4137,24 @@ $app->post('/1c_orders_created_kustuk', function() use ($app) {
 			$db_fabricant->updateOrderCode($id, $code);
 
 			error_log($count_of_braches.". id=".$id." code=".$code." date=".$date);
-
+			
+			$success_orders[]=$code;
+			
+		}catch(Exception $e){
+			error_log($e->getMessage());
 		}
-		error_log(" ");
+	}
+	
+	error_log("count_of_incoming_orders=".count($incoming_orders)." above");
+	error_log("count_of_success_orders=".count($success_orders));	
+	error_log(" ");
 
-		if($count_of_braches>0){
-			error_log("count_of_braches=$count_of_braches");
-			$response["all"] = $count_of_braches;
-		}
+	$response["error"] = false;
+	$response["message"] = "Success orders count=".count($success_orders)." from ".count($incoming_orders);
+	$response["success"] = 1;
+	$response["success_orders"]=$success_orders;
 
-
-	//} catch (Exception $e) {
-		// Exception occurred. Make error flag true
-		//$response["error"] = true;
-		//$response["message"] = $e->getMessage();
-		//$response["success"] = 0;
-		//$response = $e->getMessage();
-	//}
-		$response["error"] = false;
-		$response["message"] = "count_of_braches=".$count_of_braches;
-		$response["success"] = 0;
-
-		echoResponse(200, $response);
+	echoResponse(200, $response);
 });
 
 /**
@@ -3649,15 +4171,15 @@ $app->post('/1c_contragents_created_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_contragents_created_kustuk".$_FILES["json"]["name"]."----------------");
+	error_log("-------------1c_contragents_created_kustuk----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
 	$db_fabricant = new DbHandlerFabricant();
-	
+
 	$user=$db_profile->getUserByPhone($phone);
 	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
-	
+
 	global $api_key,$user_id;
 	$api_key=$user["api_key"];
 	$user_id=$user["id"];//Это нужно чтобы в функциях updateOrder и acceptOrder
@@ -3679,88 +4201,96 @@ $app->post('/1c_contragents_created_kustuk', function() use ($app) {
 
 	$count_of_braches=0;
 
-	//try{
+	if (!isset($_FILES["json"])) {
+		throw new Exception('Param json is missing');
+	}
+	// Check if the file is missing
+	if (!isset($_FILES["json"]["name"])) {
+		throw new Exception('Property name of json param is missing');
+	}
+	// Check the file size >100MB
+	if($_FILES["json"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
 
-		if (!isset($_FILES["json"])) {
-			throw new Exception('Param json is missing');
+	$tmpFile = $_FILES["json"]["tmp_name"];
+	//Считываем закодированный файл json в строку
+	$data = file_get_contents($tmpFile);
+	//Декодируем строку из base64 в нормальный вид
+	$data = base64_decode($data);
+	
+	//Запись в /v2/reports для лога
+	try{
+		$filename = '1c_contragents_created_kustuk'.date(" Y-m-d H-i-s ").uniqid().".json";
+		error_log("logged in file: ".$filename);		
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;		
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+			@fwrite($fp, $data);
+			@fclose($fp);
 		}
-		// Check if the file is missing
-		if (!isset($_FILES["json"]["name"])) {
-			throw new Exception('Property name of json param is missing');
-		}
-		// Check the file size >100MB
-		if($_FILES["json"]["size"] > 100*1024*1024) {
-			throw new Exception('File is too big');
-		}
+	}catch(Exception $e){
+		error_log("error when log in file /v2/reports/: ".$e->getMessage());
+	}
+	
+	$incoming_contragents=json_decode($data,true);
 
-		$tmpFile = $_FILES["json"]["tmp_name"];
+	if(!isset($incoming_contragents)){
+		throw new Exception('File is not json');
+	}
 
-		$filename = date('dmY').'-'.uniqid('1c_contragents_created_kustuk-').".json";
-		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
+	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+	unset($data);
 
-		//Считываем закодированный файл json в строку
-		$data = file_get_contents($tmpFile);
-		//Декодируем строку из base64 в нормальный вид
-		$data = base64_decode($data);
-		
-		error_log($data);
-		
-		$incoming_contragents=json_decode($data,true);
-		
-		if(!isset($incoming_contragents)){
-			throw new Exception('File is not json');
-		}
+	$success_contragents=array();
+	$count_of_braches=0;
+	
+	foreach ($incoming_contragents as $incoming_contragent) {
 
-        //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
-		unset($data);
+		$count_of_braches++;
 
-		$count_of_braches=0;
+		try{
 
-		foreach ($incoming_contragents as $incoming_contragent) {
-			
-			$count_of_braches++;
-			
 			$contragentid=$incoming_contragent["id"];
 			$contragentcode=$incoming_contragent["code"];
 			$contragentname=$incoming_contragent["name"];
 			$contragentphone=$incoming_contragent["phone"];
 			$contragentaddress=$incoming_contragent["address"];
-			
+
 			error_log($count_of_braches.". id=".$contragentid." code=".$contragentcode." phone=".$contragentphone);
 
 			$temp_customerid=$db_profile->getCustomerIdInContractorByCode($contragentcode,$contractorid);
-			
+
 			if(empty($contragentid) || empty($contragentid) || empty($contragentid) ){
 				error_log("failed. contragentid or contragentid or contragentid is not isset");
 				continue;
 			}
-			
+
 			if(isset($temp_customerid)){
 				error_log("failed. already exists with customerid=".$temp_customerid);
 				continue;
 			}
-			
+
 			$id_by_code=$db_profile->getCustomerIdInContractorByCode($contragentcode,$contractorid);
-			
-			if( isset($id_by_code) ){				
-				error_log("failed. code already exists in contractor with id=".$id_by_code);				
+
+			if( isset($id_by_code) ){
+				error_log("failed. code already exists in contractor with id=".$id_by_code);
 				continue;
 			}
-			
+
 			$code_by_id=$db_profile->getCustomerCodeInContractorById($contragentid,$contractorid);
 
-			if( isset($code_by_id) ){				
-				error_log("failed. id already exists in contractor with code=".$code_by_id);				
+			if( isset($code_by_id) ){
+				error_log("failed. id already exists in contractor with code=".$code_by_id);
 				continue;
 			}
-			
+
 			if( !isset($contragentid) && isset($contragentcode) ){
-				
-				//Создаем нового заказчика				
-				error_log("creating new customer");				
-				
+
+				//Создаем нового заказчика
+				error_log("creating new customer");
+
 				$create_customer_response=createCustomer($contragentname,$contragentaddress,$contragentphone,"{}",$user_id);
-				
+
 				if( isset($create_customer_response["contragentid"]) ){
 					error_log("created");
 					$contragentid=$create_customer_response["contragentid"];
@@ -3769,35 +4299,29 @@ $app->post('/1c_contragents_created_kustuk', function() use ($app) {
 					continue;
 				}
 			}
-			
+
 			error_log("set customer code in contarctor");
 			//Связка найденного(созданного) заказчика с контрагентом 1С
 			$db_profile->setCustomerCodeInContractor($contragentid, $contragentcode,$contractorid);
 			
+			$success_contragents[]=$contragentcode;
 			
-			
-		}
-		
-		error_log(" ");
-
-		if($count_of_braches>0){
-			error_log("count_of_braches=$count_of_braches");
-			$response["all"] = $count_of_braches;
+		}catch(Exception $e){
+			error_log($e->getMessage());
 		}
 
+	}
 
-	//} catch (Exception $e) {
-		// Exception occurred. Make error flag true
-		//$response["error"] = true;
-		//$response["message"] = $e->getMessage();
-		//$response["success"] = 0;
-		//$response = $e->getMessage();
-	//}
-		$response["error"] = false;
-		$response["message"] = "count_of_braches=".$count_of_braches;
-		$response["success"] = 0;
+	error_log("count_of_incoming_contragents=".count($incoming_contragents)." above");
+	error_log("count_of_success_contragents=".count($success_contragents));	
+	error_log(" ");
 
-		echoResponse(200, $response);
+	$response["error"] = false;
+	$response["message"] = "Success contragent count=".count($success_contragents)." from ".count($incoming_contragents);
+	$response["success"] = 1;
+	$response["success_contragents"]=$success_contragents;
+
+	echoResponse(200, $response);
 });
 
 /**
@@ -3814,7 +4338,7 @@ $app->post('/1c_users_created_kustuk', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_users_created_kustuk ".$_FILES["json"]["name"]."----------------");
+	error_log("-------------1c_users_created_kustuk----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -3836,101 +4360,102 @@ $app->post('/1c_users_created_kustuk', function() use ($app) {
 	//Проверка доступна ли 1С синхронизация у этого поставщика
 	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
 
+	if (!isset($_FILES["json"])) {
+		throw new Exception('Param json is missing');
+	}
+	// Check if the file is missing
+	if (!isset($_FILES["json"]["name"])) {
+		throw new Exception('Property name of json param is missing');
+	}
+	// Check the file size >100MB
+	if($_FILES["json"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
 
+	$tmpFile = $_FILES["json"]["tmp_name"];
+	//Считываем закодированный файл json в строку
+	$data = file_get_contents($tmpFile);	
+	//Декодируем строку из base64 в нормальный вид	
+	$data = base64_decode($data);
+	
+	//Запись в /v2/reports для лога
+	try{
+		$filename = '1c_users_created_kustuk'.date(" Y-m-d H-i-s ").uniqid().".json";
+		error_log("logged in file: ".$filename);		
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;		
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+			@fwrite($fp, $data);
+			@fclose($fp);
+		}
+	}catch(Exception $e){
+		error_log("error when log in file /v2/reports/: ".$e->getMessage());
+	}
+	
+	$incoming_users = json_decode($data,true);
+	if(!isset($incoming_users)){
+		throw new Exception('File is not json');
+	}
+	
+	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+	unset($data);
+
+	$success_users=array();	
 	$count_of_braches=0;
 
-	//try{
+	foreach ($incoming_users as $incoming_user) {
 
-		if (!isset($_FILES["json"])) {
-			throw new Exception('Param json is missing');
-		}
-		// Check if the file is missing
-		if (!isset($_FILES["json"]["name"])) {
-			throw new Exception('Property name of json param is missing');
-		}
-		// Check the file size >100MB
-		if($_FILES["json"]["size"] > 100*1024*1024) {
-			throw new Exception('File is too big');
-		}
+		$count_of_braches++;
 
-		$tmpFile = $_FILES["json"]["tmp_name"];
-
-		$filename = date('dmY').'-'.uniqid('1c_users_created_kustuk-').".json";
-		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;
-
-		//Считываем закодированный файл json в строку
-		$data = file_get_contents($tmpFile);
-		//Декодируем строку из base64 в нормальный вид
-		$data = base64_decode($data);
-		
-		$incoming_users = json_decode($data,true);
-		
-		if(!isset($incoming_users)){
-			throw new Exception('File is not json');
-		}
-
-        //Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
-		unset($data);
-
-		$count_of_braches=0;
-
-		foreach ($incoming_users as $incoming_user) {
-			
-			$count_of_braches++;
-			
+		try{
 			$id=$incoming_user["id"];
 			$code=$incoming_user["code"];
 			$name=$incoming_user["name"];
-			
+
 			error_log("");
 			error_log($count_of_braches.". id=".$id." code=".$code." name=".$name);
-			
-			if( empty($id) || empty($code) || empty($name) ){				
-				error_log("failed. id or code or name is not isset");				
+
+			if( empty($id) || empty($code) || empty($name) ){
+				error_log("failed. id or code or name is not isset");
 				continue;
 			}
-			
+
 			$id_by_code=$db_profile->getUserIdInContractorByCode($code,$contractorid);
-			
-			if( isset($id_by_code) ){				
-				error_log("failed. code already exists in contractor with id=".$id_by_code);				
+
+			if( isset($id_by_code) ){
+				error_log("failed. code already exists in contractor with id=".$id_by_code);
 				continue;
 			}
-			
+
 			$code_by_id=$db_profile->getUserCodeInContractorById($id,$contractorid);
 
-			if( isset($code_by_id) ){				
-				error_log("failed. id already exists in contractor with code=".$code_by_id);				
+			if( isset($code_by_id) ){
+				error_log("failed. id already exists in contractor with code=".$code_by_id);
 				continue;
-			}	
+			}
 
 			//Добавляем новую запись в code_in_contractor, в info пользователя
 			$db_profile->setUserCodeInContractor($id, $code,$contractorid);
-			
+
 			error_log("success");
 			
-			
-		}
-		error_log(" ");
+			$success_users[]=$code;
 
-		if($count_of_braches>0){
-			error_log("count_of_braches=$count_of_braches");
-			$response["all"] = $count_of_braches;
+		}catch(Exception $e){
+			error_log($e->getMessage());
 		}
 
+	}
+		
+	error_log("count_of_incoming_users=".count($incoming_users)." above");
+	error_log("count_of_success_users=".count($success_users));	
+	error_log(" ");
 
-	//} catch (Exception $e) {
-		// Exception occurred. Make error flag true
-		//$response["error"] = true;
-		//$response["message"] = $e->getMessage();
-		//$response["success"] = 0;
-		//$response = $e->getMessage();
-	//}
-		$response["error"] = false;
-		$response["message"] = "count_of_braches=".$count_of_braches;
-		$response["success"] = 0;
+	$response["error"] = false;
+	$response["message"] = "Success users count=".count($success_users)." from ".count($incoming_users);
+	$response["success"] = 1;
+	$response["success_users"]=$success_users;
 
-		echoResponse(200, $response);
+	echoResponse(200, $response);
 });
 
 /**
@@ -3974,67 +4499,67 @@ $app->post('/1c_contragents_kustuk', function() use ($app) {
 	//Проверяем доступ к группе
 	$user=$db_profile->getUserByPhone($phone);
 	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
-	
+
 	//Проверка доступна ли 1С синхронизация у этого поставщика
 	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
-	
-	//Берем флаг запрет импорта заказов без визы  
+
+	//Берем флаг запрет импорта заказов без визы
 	$contractor=$db_profile->getGroupById($contractorid)[0];
 	$contractor_info=(isset($contractor["info"]))?json_decode($contractor["info"],true):null;
-	
-	$synchronize_only_orders_with_visa=( isset($contractor_info["synchronize_only_orders_with_visa"]) && $contractor_info["synchronize_only_orders_with_visa"] );	
+
+	$synchronize_only_orders_with_visa=( isset($contractor_info["synchronize_only_orders_with_visa"]) && $contractor_info["synchronize_only_orders_with_visa"] );
 	error_log("synchronize_only_orders_with_visa=".$synchronize_only_orders_with_visa);
-	
+
 	$orders=$db_fabricant->getOrdersDeltaOfContractor($contractorid,$last_timestamp);
-	error_log("orders count: ".count($orders));
-	
+	error_log("potential orders count: ".count($orders));
+
 	$outgoing_contragents=array();
-	
+
 	foreach($orders as $num=>$order){
-	
-		error_log("");		
-		error_log("$num. orderid=".$order["id"]);
-		
+
+		//error_log("");
+		//error_log("$num. orderid=".$order["id"]);
+
 		$record=json_decode($order["record"],true);
-		
+
 		//Проверка условий для импорта заказа
 		if( $order["status"]!=1 || !empty($order["code1c"]) ){
 			//error_log("abort: status or code1c are not correct");
 			continue;
 		}
-		
+
 		//Если стоит запрет на импорт заказа без визы
 		if( $synchronize_only_orders_with_visa && ( !isset($record["visa"]) || !$record["visa"] ) ){
 			//error_log("abort: visa is not set");
 			continue;
 		}
-		
+
 		//Берем только те заказы у которых нет кода контрагента
 		if(isset($record["customercode"])){
 			//error_log("abort: customercode is set: ".$record["customercode"]);
 			continue;
 		}else{
-			
+
 			$temp_customercode=$db_profile->getCustomerCodeInContractorById($order["customerid"],$order["contractorid"]);
-			
+
 			//Проверяем на случай, если код был присвоен в базу после создания заказа
 			if(isset($temp_customercode)){
 				//error_log("abort: customercode was set after order created: ".$temp_customercode);
 				continue;
 			}else{
-			
-			
+
+
 				error_log("status: ".$order["status"]);
 				error_log("code1c: ".$order["code1c"]);
-				
+
 				error_log("customerid: ".$order["customerid"]);
 				error_log("customerName: ".$record["customerName"]);
-				
-				
+
+
 				$outgoing_contragent=array();
 				$outgoing_contragent["customerid"]=$order["customerid"];
 				$outgoing_contragent["customerName"]=$record["customerName"];
-				
+
 				if(isset($record["address"])){
 					$outgoing_contragent["address"]=$record["address"];
 					error_log("code1c: ".$record["address"]);
@@ -4042,7 +4567,7 @@ $app->post('/1c_contragents_kustuk', function() use ($app) {
 					$outgoing_contragent["address"]=null;
 					error_log("address: ".null);
 				}
-				
+
 				if(isset($record["customerPhone"])){
 					$outgoing_contragent["customerPhone"]=$record["phone"];
 					error_log("customerPhone: ".$record["phone"]);
@@ -4050,13 +4575,13 @@ $app->post('/1c_contragents_kustuk', function() use ($app) {
 					$outgoing_contragent["customerPhone"]=null;
 					error_log("customerPhone: ".null);
 				}
-				
+
 				$outgoing_contragents[]=$outgoing_contragent;
 			}
 		}
-		
-		
-		
+
+
+
 	}
 
 	echoResponse(200, $outgoing_contragents);
@@ -4104,66 +4629,66 @@ $app->post('/1c_users_kustuk', function() use ($app) {
 	//Проверяем доступ к группе
 	$user=$db_profile->getUserByPhone($phone);
 	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
-	
+
 	//Проверка доступна ли 1С синхронизация у этого поставщика
 	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
-	
-	//Берем флаг запрет импорта заказов без визы  
+
+	//Берем флаг запрет импорта заказов без визы
 	$contractor=$db_profile->getGroupById($contractorid)[0];
 	$contractor_info=(isset($contractor["info"]))?json_decode($contractor["info"],true):null;
-	
-	$synchronize_only_orders_with_visa=( isset($contractor_info["synchronize_only_orders_with_visa"]) && $contractor_info["synchronize_only_orders_with_visa"] );	
+
+	$synchronize_only_orders_with_visa=( isset($contractor_info["synchronize_only_orders_with_visa"]) && $contractor_info["synchronize_only_orders_with_visa"] );
 	error_log("synchronize_only_orders_with_visa=".$synchronize_only_orders_with_visa);
-	
+
 	$orders=$db_fabricant->getOrdersDeltaOfContractor($contractorid,$last_timestamp);
 	error_log("potential orders count: ".count($orders));
-	
+
 	$outgoing_users=array();
-	
+
 	foreach($orders as $num=>$order){
 		//error_log("");
 		//error_log("$num. orderid=".$order["id"]);
-		
-		
+
+
 		$record=json_decode($order["record"],true);
-		
+
 		//Проверка условий для импорта заказа
 		if( $order["status"]!=1 || !empty($order["code1c"]) ){
 			//error_log("abort: status or code1c are not correct");
 			continue;
 		}
-		
+
 		//Если стоит запрет на импорт заказа без визы
 		if( $synchronize_only_orders_with_visa && ( !isset($record["visa"]) || !$record["visa"] ) ){
 			//error_log("abort: visa is not set");
 			continue;
 		}
-		
+
 		//Отправляем только те у кого нет кода пользователя поставившего визу
 		if(isset($record["visaAddedUserCode"])){
 			//error_log("abort: visaAddedUserCode is set in order");
 			continue;
 		}else{
 			$temp_visaAddedUserCode=$db_profile->getUserCodeInContractorById($record["visaAddedUserId"],$order["contractorid"]);
-			
+
 			//Проверяем на случай, если код был установлен после создания заказа
 			if(isset($temp_visaAddedUserCode)){
 				//error_log("abort: visaAddedUserCode was set after order created");
 				continue;
 			}else{
-				
-				error_log("status: ".$order["status"]);				
+
+				error_log("status: ".$order["status"]);
 				error_log("customerUserId: ".$record["customerUserId"]);
 				error_log("visaAddedUserId: ".$record["visaAddedUserId"]);
-				
+
 				$outgoing_user=array();
-				$outgoing_user["id"]=$record["visaAddedUserId"];				
+				$outgoing_user["id"]=$record["visaAddedUserId"];
 				$outgoing_user["name"]=$record["visaAddedUserName"];
-				
+
 				$outgoing_users[]=$outgoing_user;
 			}
 		}
-		
+
 	}
 
 	echoResponse(200, $outgoing_users);
@@ -4731,27 +5256,27 @@ function getMinRest($product){
 }
 
 function isProductInStock($product){
-		
+
 	$tag="not_in_stock";
-	
+
 	if(!isset($product)){
 		return true;
 	}
-	
+
 	if(!isset($product["info"])){
 		return true;
-	}		
-	
+	}
+
 	$info=json_decode($product["info"],true);
-	
-	if(!isset($info["tags"])){			
+
+	if(!isset($info["tags"])){
 		return true;
 	}
-	
+
 	if(!in_array($tag,$info["tags"])){
-		return true;		
+		return true;
 	}
-	
+
 	return false;
 }
 
@@ -4805,12 +5330,12 @@ function permissionAdminInGroup($userid,$groupid,$db_profile){
 }
 
 function check1CSynchronizingEnabledInContractor($contractorid,$db_profile){
-	
-	
+
+
 	$contractor=$db_profile->getGroupById($contractorid)[0];
 	$contractor_info=(isset($contractor["info"]))?json_decode($contractor["info"],true):null;
-	
-	
+
+
 	//Если установлена синхронизация 1С у поставщика
 	if( isset($contractor_info["1c_synchronized"]) && $contractor_info["1c_synchronized"] ){
 		return;
@@ -4850,6 +5375,7 @@ define("M_CONSOLE_OPERATION_ORDER", 3);
 define("M_CONSOLE_OPERATION_GROUP_CHANGED", 5);
 define("M_CONSOLE_OPERATION_PRODUCT_CHANGED", 6);
 define("M_CONSOLE_OPERATION_NOTIFY_PRODUCTS", 7);
+define("M_CONSOLE_OPERATION_RECALCULATE_PRODUCTS_REST", 8);
 
 define("M_ORDEROPERATION_ACCEPT", 2);
 
@@ -4862,17 +5388,20 @@ function consoleCommand($header_json){
 
 	$response="{'message': 'ConsoleCommand. begin', 'status':'0'}";
 
-	if($client->connect($header_json, '127.0.0.1', WEBSOCKET_SERVER_PORT,"/")){
 
-		$data = fread($client->_Socket, 1024);
-		$message_array = $client->_hybi10Decode($data);//implode(",",);
-		$response=$message_array["payload"];
 
-	}else{
-		$response="{'message':'ConsoleCommand. Connecting failed', 'status':'0'}";
-	}
+		if($client->connect($header_json, '127.0.0.1', WEBSOCKET_SERVER_PORT,"/")){
 
-	$client->disconnect();
+			$data = fread($client->_Socket, 1024);
+			$message_array = $client->_hybi10Decode($data);//implode(",",);
+			$response=$message_array["payload"];
+
+		}else{
+			$response="{'message':'ConsoleCommand. Connecting failed', 'status':'0'}";
+		}
+
+		$client->disconnect();
+
 
 	$json=(array)json_decode($response);
 
@@ -4919,6 +5448,21 @@ function consoleCommandNotifyProducts($products){
 		$console_response=consoleCommand($json_header);
 		}catch(Exception $e){
 			//Была ошибка. Изменение ряда продуктов не пойдет по коммуникатору
+		}
+}
+
+function consoleCommandRecalculateProductsRest($contractorid,$products){
+
+		$json_header=array();
+		$json_header["console"]="recalculate_products_rest";
+		$json_header["operation"]=M_CONSOLE_OPERATION_RECALCULATE_PRODUCTS_REST;
+		$json_header["contractorid"] = $contractorid;
+		$json_header["products"] = $products;
+
+		try{
+		$console_response=consoleCommand($json_header);
+		}catch(Exception $e){
+			//Была ошибка. Изменение остатков не пойдет по коммуникатору
 		}
 }
 
