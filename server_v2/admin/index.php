@@ -3590,6 +3590,205 @@ $app->post('/1c_products_kustuk', function() use ($app) {
 });
 
 /**
+ * Получает остатки всех товаров, не полученные остатки обнуляются
+ * method POST
+ */
+$app->post('/1c_products_rest_all_kustuk', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+
+	error_log("-------------1c_products_rest_all_kustuk----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
+
+	$db_profile=new DbHandlerProfile();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+
+	if (!isset($_FILES["json"])) {
+		throw new Exception('Param json is missing');
+	}
+	// Check if the file is missing
+	if (!isset($_FILES["json"]["name"])) {
+		throw new Exception('Property name of json param is missing');
+	}
+	// Check the file size >100MB
+	if($_FILES["json"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
+
+	$tmpFile = $_FILES["json"]["tmp_name"];	
+	//Считываем закодированный файл json в строку
+	$data = file_get_contents($tmpFile);
+	//Декодируем строку из base64 в нормальный вид
+	$data = base64_decode($data);
+
+	//Запись в /v2/reports для лога
+	try{
+		$filename = '1c_products_rest_all_kustuk'.date(" Y-m-d H-i-s ").uniqid();
+		error_log("logged in file: ".$filename.".json");		
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename.".json";		
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+			@fwrite($fp, $data);
+			@fclose($fp);
+		}
+	}catch(Exception $e){
+		error_log("error when log in file /v2/reports/: ".$e->getMessage());
+	}
+
+	$incoming_products = json_decode($data,true);
+
+	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+	unset($data);
+
+	$db_fabricant = new DbHandlerFabricant();
+
+	$count_of_products=0;
+	$count_of_unknown_products=0;
+
+	$success_products=array();
+	$changed_products=array();
+	$changed_products_for_rest=array();
+
+	error_log("incoming rest products count=".count($incoming_products));
+	
+	$incoming_rests=array();
+	
+	foreach ($incoming_products as $incoming_product) {
+
+		$count_of_products++;
+
+		try{
+
+			$code=$incoming_product["code"];
+			$rest=$incoming_product["rest"];
+			
+			$product=$db_fabricant->getProductByCode($contractorid,$code);
+
+			//Если код продукта не существует в контракторе, создаем новый продукт
+			if(!isset($product)){
+				error_log("$count_of_products. Product code=".$code." rest=".$rest." missing");
+				$count_of_unknown_products++;
+				continue;
+			}
+			
+			$incoming_rests[strval($code)]=$rest;
+			
+		}catch(Exception $e){
+			error_log($e->getMessage());
+		}
+
+	}
+	
+	$products=$db_fabricant->getProductsOfContractor($contractorid);
+		
+	$count_of_products=0;
+	foreach($products as $product){
+	
+		$count_of_products++;
+		
+		try{
+			
+			if( !isset($product["code1c"]) )continue;
+			
+			$code=$product["code1c"];
+			
+			$found_in_incoming_rests=false;
+			
+			if( isset($incoming_rests[$code]) ){
+				$rest=$incoming_rests[$code];	
+				$found_in_incoming_rests=true;			
+			}else{
+				//Если остаток для этого товара не пришел, то делаем как будто пришел нулевой остаток
+				$rest=0;
+			}
+			
+			//Берем основные остатки из базы
+			$rest_string=$db_fabricant->getProductRestById($product["id"]);
+			$rest_array=json_decode($rest_string,true);
+
+			if((!isset($rest_array["main"]))||($rest_array["main"]!=$rest)){
+
+				$rest_array["main"]=$rest;
+				$rest_string=json_encode($rest_array,JSON_UNESCAPED_UNICODE);
+				$db_fabricant->setProductRestById($product["id"],$rest_string);
+
+				$rest_product=array();
+				$rest_product["productid"]=$product["id"];
+				$rest_product["rest"]=$rest_string;
+				$changed_products_for_rest[]=$rest_product;
+
+			}
+
+			//Находим минимальный остаток
+			$min_rest=getMinRest($product);
+
+			if( ($rest>$min_rest)&&(isProductInStock($product)==false) ){
+				//Продукт только-что появился в наличии
+				error_log("$count_of_products. Product code=".$code." id=".$product["id"]." reciepte rest=".$rest." min_rest=".$min_rest);
+				$db_fabricant->makeProductInStock($product["id"]);
+				$changed_products[]=$product;
+			}else if( ($rest<=$min_rest)&&(isProductInStock($product)==true) ){
+				//Продукт только-что закончился
+				error_log("$count_of_products. Product code=".$code." id=".$product["id"]." not_in_stock rest=".$rest." min_rest=".$min_rest);
+				$db_fabricant->makeProductNotInStock($product["id"]);
+				$changed_products[]=$product;
+			}else{
+				error_log("$count_of_products. Product code=".$code." id=".$product["id"]." is_in_stock=".isProductInStock($product)." rest=".$rest." min_rest=".$min_rest);
+			}
+			
+		}catch(Exception $e){
+			error_log($e->getMessage());
+		}
+		
+		if($found_in_incoming_rests){
+			$success_products[]=$code;
+		}
+
+	}
+	
+	error_log("incoming rest products count=".count($incoming_products)." above");
+	error_log("stocking changed products count=".count($changed_products)." (not_in_stock/in_stock)");
+	error_log("main rest changed products count=".count($changed_products_for_rest));
+	error_log("unknown products count=".$count_of_unknown_products);
+	error_log("success count=".count($success_products));
+	error_log("1c_products_rest_all_kustuk above");
+	error_log(" ");
+	
+	//Уведомляем по коммуникатору измененные продукты
+	if(count($changed_products)>0){
+		consoleCommandNotifyProducts($changed_products); 
+	}
+
+	//Уведомляем по коммуникатору изменение остатков
+	if(count($changed_products_for_rest)>0){
+		consoleCommandRecalculateProductsRest($contractorid,$changed_products_for_rest); 
+	}
+
+	$response["error"] = false;
+	$response["message"] = "Import of all products rest successfully done";
+	$response["success"] = 1;
+	$response["success_products"] = $success_products;
+		
+	echoResponse(200, $response);
+});
+
+/**
  * Получает остатки товаров и высталяет наличие или не-наличие
  * method POST
  */
@@ -3710,13 +3909,11 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 				//Продукт только-что появился в наличии
 				error_log("$count_of_products. Product code=".$code." id=".$product["id"]." reciepte rest=".$rest." min_rest=".$min_rest);
 				$db_fabricant->makeProductInStock($product["id"]);
-				//consoleCommandProductUpdated($product["id"]);
 				$changed_products[]=$product;
 			}else if( ($rest<=$min_rest)&&(isProductInStock($product)==true) ){
 				//Продукт только-что закончился
 				error_log("$count_of_products. Product code=".$code." id=".$product["id"]." not_in_stock rest=".$rest." min_rest=".$min_rest);
 				$db_fabricant->makeProductNotInStock($product["id"]);
-				//consoleCommandProductUpdated($product["id"]);
 				$changed_products[]=$product;
 			}else{
 				error_log("$count_of_products. Product code=".$code." id=".$product["id"]." is_in_stock=".isProductInStock($product)." rest=".$rest." min_rest=".$min_rest);
@@ -3734,37 +3931,25 @@ $app->post('/1c_products_rest_kustuk', function() use ($app) {
 	error_log("stocking changed products count=".count($changed_products)." (not_in_stock/in_stock)");
 	error_log("main rest changed products count=".count($changed_products_for_rest));
 	error_log("unknown products count=".$count_of_unknown_products);
-	error_log("success products count=".count($success_products));
+	error_log("success count=".count($success_products));
+	error_log("1c_products_rest_kustuk above");
 	error_log(" ");
 	
 	//Уведомляем по коммуникатору измененные продукты
 	if(count($changed_products)>0){
-		//consoleCommandNotifyProducts($changed_products); не уведомляем пока, только во время первого запуска получают
+		consoleCommandNotifyProducts($changed_products);
 	}
 
 	//Уведомляем по коммуникатору изменение остатков
 	if(count($changed_products_for_rest)>0){
-		//consoleCommandRecalculateProductsRest($contractorid,$changed_products_for_rest); не уведомляем пока, только во время первого запуска получают
+		consoleCommandRecalculateProductsRest($contractorid,$changed_products_for_rest);
 	}
 
 	$response["error"] = false;
-	$response["message"] = "Import successfully done";
+	$response["message"] = "Import of operative rests successfully done";
 	$response["success"] = 1;
 	$response["success_products"] = $success_products;
-	
-	//Запись в /v2/reports для лога
-	try{
-		$filename=$filename."_success";
-		error_log("success logged in file: ".$filename.".json");		
-		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename.".json";		
-		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
-			@fwrite($fp, $data);
-			@fclose($fp);
-		}
-	}catch(Exception $e){
-		error_log("error when log in file /v2/reports/: ".$e->getMessage());
-	}
-	
+		
 	echoResponse(200, $response);
 });
 

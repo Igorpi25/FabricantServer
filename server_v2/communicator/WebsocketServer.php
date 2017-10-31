@@ -1616,6 +1616,8 @@ protected function recalculateInOrderRest($contractorid){
 
 	error_log("----------------recalculateInOrderRest---------------------");
 
+	$products=array();
+	
 	/*$orders=$this->db_fabricant->getAllProcessingOrdersOfContractor($contractorid);
 
 	error_log("orders count=".count($orders));
@@ -1831,23 +1833,23 @@ protected function ProcessConsoleOperation($connect,$info) {
 
 			foreach($products_main as $product_main){
 				$found=false;
-        if(!empty($products_in_order)){
-  				foreach($products_in_order as $product_in_order){
-  					$id_main=$product_main->productid;
-  					$id_in_order=$product_in_order["productid"];
-  					if($id_main==$id_in_order){
-  						$found=true;
-  						break;
-  					}
-  				}
-				}
+				/*if(!empty($products_in_order)){
+					foreach($products_in_order as $product_in_order){
+						$id_main=$product_main->productid;
+						$id_in_order=$product_in_order["productid"];
+						if($id_main==$id_in_order){
+							$found=true;
+							break;
+						}
+					}
+				}*/
 
 				if(!$found){
 					$products_in_order[]=$product_main;
 				}
 			}
 
-			//$this->outgoingNotifyContractorProductsRest($contractorid,$products_in_order);
+			$this->outgoingNotifyContractorProductsRest($contractorid,$products_in_order);
 
 			$this->log(">>>");
 

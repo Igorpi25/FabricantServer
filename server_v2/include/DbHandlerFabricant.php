@@ -156,12 +156,12 @@ class DbHandlerFabricant extends DbHandler{
 	}
 
 	public function getProductsOfContractor($contractorid){
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c, p.article FROM products p WHERE p.contractorid=? AND p.status<>0");
+		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c, p.article,r.rest FROM products p LEFT OUTER JOIN products_rest r ON p.id=r.productid WHERE p.contractorid=? AND p.status<>0");
 		$stmt->bind_param("i", $contractorid);
 		if ($stmt->execute()){
 			$stmt->store_result();
 			if($stmt->num_rows==0) return NULL;
-			$stmt->bind_result($id, $contractorid, $name, $status, $price, $info, $changed_at, $code1c,$article);
+			$stmt->bind_result($id, $contractorid, $name, $status, $price, $info, $changed_at, $code1c,$article,$rest);
 			$result=array();
 			while($stmt->fetch()){
 				$res=array();
@@ -173,6 +173,7 @@ class DbHandlerFabricant extends DbHandler{
 				$res["info"] = $info;
 				$res["code1c"] = $code1c;
 				$res["article"] = $article;
+				$res["rest"] = $rest;
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
 				$res["changed_at"] = $timestamp_object->getTimestamp();
 				$result[]=$res;
