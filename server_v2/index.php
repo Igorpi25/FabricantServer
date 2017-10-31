@@ -2355,7 +2355,7 @@ function createOrder($json_order,$user_id){
 
 
 	} catch (Exception $e) {
-
+		error_log("createOrder Excpetion e: ".$e->getMessage());
 		$response['error'] = true;
 		$response['message'] = $e->getMessage();
 		$response['success'] = 0;
@@ -2685,6 +2685,10 @@ function makeOrderRecord($order){
 		//Check is user in contractor group. Contractor can create order to any customer
 		checkUserPermissionToGroups($contractorid,$customerid);
 
+		//Информация о группировке товара
+		$products_groups=json_decode($contractor["info"],true)["products_groups"];
+		$products_groups_map=array();
+				
 
 		//Installment
 		$logs[]="Installment";
@@ -2732,7 +2736,7 @@ function makeOrderRecord($order){
 				$item["name"]=$product["name"];
 				$item["count"]=$count;
 				$item["amount"]=$item["price"]*$count;
-
+				
 				//Нет в наличии
 				if(productHasTag("not_in_stock",$product)){
 					$item["name"]="(НЕТ В НАЛИЧИИ) ".$item["name"];
@@ -2761,6 +2765,26 @@ function makeOrderRecord($order){
 					$item["sale"]=$sale_info;
 
 				}
+				
+				try{
+					//Готовим карту задействованных групп				
+					$item["priority"]=json_decode($product["info"],true)["priority"];//Нужно для сортировки внутри группы
+					
+					foreach($products_groups as $products_group){
+						if(productHasTag($products_group["tag_product"],$product)){						
+							$item["group_tag"]=$products_group["tag_product"];
+							
+							if(!isset($products_groups_map[$products_group["tag_product"]])){
+								$products_groups_map[$products_group["tag_product"]]=$products_group;
+							}
+							
+							break;
+						}
+					}
+				}catch(Exception $e){
+					error_log("makeOrderRecord preparing products_groups_map Exception e: ".$e->getMessage());
+				}
+				
 
 				$basket_price+=$item["amount"];
 
@@ -2771,7 +2795,13 @@ function makeOrderRecord($order){
 				$item["product"]=$product;
 				$basket_products[]=$item;
 		}
-
+		
+		//Составляем список задействованных групп для добавления в record
+		$products_groups=array();
+		foreach($products_groups_map as $products_group_tag=>$products_group){
+			$products_groups[]=$products_group;
+		}
+		
 		//Costs
 		$costs=array();
 		$costs["itemsAmount"]=$basket_price;
@@ -2848,7 +2878,8 @@ function makeOrderRecord($order){
 		if(isset($customercode)){
 			$record["customercode"]=$customercode;
 		}
-
+		
+		$record["products_groups"]=$products_groups;
 		$record["items"]=$basket;
 		$record["costs"]=$costs;
 		$record["totalCost"]=$total_cost;
