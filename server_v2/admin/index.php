@@ -4048,6 +4048,7 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 	$contractorid = $app->request->post('contractorid');
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
+	$dbname = $app->request->post('dbname');
 	//$last_timestamp = $app->request->post('last_timestamp');
 
 	//Формируем timestamp для последних 3-х дней
@@ -4055,7 +4056,7 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 	$last_timestamp=strtotime($date)-(3*60*60*24);
 
 	error_log("-------------1c_orders_kustuk----------------");
-	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."_lasttimestamp=".$last_timestamp."|");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."_dbname=".$dbname."_lasttimestamp=".$last_timestamp."|");
 	error_log("current_date=".date("M-d-Y"));
 	error_log("target_date=".$date);
 	error_log("timestamp=".$last_timestamp);
@@ -4088,7 +4089,7 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 	error_log("synchronize_only_orders_with_visa=".$synchronize_only_orders_with_visa);
 
 	$orders=$db_fabricant->getOrdersDeltaOfContractor($contractorid,$last_timestamp);
-	//error_log("orders count: ".count($orders));
+	error_log("orders count: ".count($orders));
 
 	$outgoing_orders=array();
 
@@ -4099,10 +4100,10 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 		/*error_log("");
 		error_log("orderid: ".$order["id"]);
 		error_log("status: ".$order["status"]);
-		error_log("code1c: ".$order["code1c"]);*/
+		error_log("code1c: ".$order["code1c"]);
 
-		//if(isset($record["visa"]))error_log("record: ".$record["visa"]);
-
+		if(isset($record["visa"]))error_log("record: ".$record["visa"]);
+		*/
 		//Проверка условий для импрта заказа
 		if( $order["status"]!=1 || !empty($order["code1c"]) ){
 			//error_log("abort: status or code1c are not correct");
@@ -4192,11 +4193,15 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 		}else{
 			$outgoing_order["comment"]="Фабрикант";
 		}
+		
+		//error_log("outgoing order before items : ".json_encode($outgoing_order,JSON_UNESCAPED_UNICODE));
 
 		$outgoing_items=array();
 
 		foreach ($record["items"] as $item) {
 
+			//error_log("source_item index=".count($outgoing_items)." :".json_encode($item,JSON_UNESCAPED_UNICODE));
+			
 			$outgoing_item = array();
 
 			$outgoing_item["id"]=$item["productid"];
@@ -4209,14 +4214,28 @@ $app->post('/1c_orders_kustuk', function() use ($app) {
 				$outgoing_item["price"] = $item["price"];
 
 			$outgoing_item["amount"] = $item["amount"];
-
+			
+			/*error_log("outgoing_item index=".count($outgoing_items)." :".json_encode($outgoing_item,JSON_UNESCAPED_UNICODE));			
+			json_encode($outgoing_items,JSON_UNESCAPED_UNICODE);
+			error_log("jsonlasterror: ".json_last_error());*/
+			
 			$outgoing_items[]=$outgoing_item;
+			
+			
 		}
 
+		/*error_log("outgoing_order: ".json_encode($outgoing_order,JSON_UNESCAPED_UNICODE));		
+		error_log("jsonlasterror: ".json_last_error());
+		
+		error_log("outgoing_items: ".json_encode($outgoing_items,JSON_UNESCAPED_UNICODE));
+		error_log("jsonlasterror: ".json_last_error());		
+		*/
+		
 		$outgoing_order["items"]=$outgoing_items;
-
+		
 		error_log((count($outgoing_orders)+1).". orderid=".$outgoing_order["orderid"]." customerid=".$outgoing_order["customerid"]." items_count=".count($outgoing_items)." date:".$outgoing_order["date"]);
 
+		
 		$outgoing_orders[]=$outgoing_order;
 
 	}
@@ -4880,7 +4899,538 @@ $app->post('/1c_users_kustuk', function() use ($app) {
 
 });
 
-//-------------------------------------------------------------------
+/**
+ * Проверяет все продукты на UTC несовместимые символы. Чтобы предупредить json ошибки
+ * method GET
+ */
+$app->get('/check_products_uts_compatable', 'authenticate',function() use ($app) {
+	global $user_id;	
+	$contractorid=127;//Kustuk id
+	
+	// array for final json response
+	$response = array();
+
+	error_log("-------------/check_products_uts_compatable----------------");
+	error_log("|user_id=".$user_id." contractorid=".$contractorid."|");
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+	
+	permissionAdminInGroup($user_id,$contractorid,$db_profile);
+	
+	$products = $db_fabricant->getProductsOfContractor($contractorid);
+	
+	$products_with_defect=array();
+	foreach($products as $product){
+		
+		$temp=array();
+		$temp["name"]=$product["name"];
+		$temp["info"]=$product["info"];
+		
+		json_encode($temp,JSON_UNESCAPED_UNICODE);
+		
+		if(json_last_error()!=0){
+			$defect=array();
+			$defect["productid"]=$product["id"];
+			$defect["json_last_error"]=json_last_error();
+			$products_with_defect[]=$defect;
+		}
+		
+	}
+	
+	if ($products) {
+		$response["error"] = false;
+		$response["success"] = 1;		
+		$response["message"] = "Success. Defected products count=".count($products_with_defect);		
+		$response["products_with_defect"] = $products_with_defect;
+		
+	}
+	else {
+		$response["error"] = true;
+		$response["success"] = 0;
+		$response["message"] = "Failed to get products of contractor. Please try again";
+	}
+	
+	
+
+	echoResponse(200, $response);
+});
+
+//-------------------------------Kustuk Analytic-------------------------------
+
+/**
+ * Получаем список групп для аналитики агента
+ * agentid - id агента по которому нужна аналитика
+ * Возвращаемое значение - группы
+ * method POST
+ */
+$app->post('/analytic_agent_kustuk/:agentid/groups/', 'authenticate', function($agentid) use ($app) {
+
+	global $user_id;	
+	$contractorid=127;//Kustuk id
+	
+	$tea_akb_summ=2000;
+	$coffee_akb_summ=500;
+	
+	// array for final json response
+	$response = array();
+		
+	error_log("-------------/analytic_agent_kustuk/".$agentid."/groups----------------");
+	error_log("|agentid=".$agentid." user_id=".$user_id." contractorid=".$contractorid."|");
+	
+	$date_from='2017-09-29';
+	$date_to='2017-11-02';
+
+	$timestamp_from = DateTime::createFromFormat('Y-m-d', $date_from)->getTimestamp();
+	$timestamp_to = DateTime::createFromFormat('Y-m-d', $date_to)->getTimestamp();
+	
+	error_log("|timestamp_from=".$timestamp_from." timestamp_to=".$timestamp_to."|");
+	
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+	
+	permissionInGroup($user_id,$contractorid,$db_profile);
+	
+	if($user_id!=$agentid){
+		permissionAdminInGroup($user_id,$contractorid,$db_profile);
+	}
+	
+	$groups = $db_fabricant->getAnalyticGroupsOfUser($agentid);	
+	$extended_groups=array();
+	
+	$tea_ids=$db_fabricant->getAnalyticProductsIdsWithTag("kustuk_tea");
+	$coffee_ids=$db_fabricant->getAnalyticProductsIdsWithTag("kustuk_coffee");
+	
+	foreach($groups as $group){		
+		$groupid=$group["id"];
+		$tea_summ=0;
+		$coffee_summ=0;
+		
+		$orders=$db_fabricant->getAnalyticCustomerOrders($contractorid, $groupid, $timestamp_from, $timestamp_to);
+		
+		foreach($orders as $order){
+			$record=json_decode($order["record"],true);
+			$items=$record["items"];
+			
+			foreach($items as $item){
+				$productid=$item["productid"];
+				$amount=$item["productid"];
+			
+				if(in_array($productid,$tea_ids)){
+					$tea_summ+=$item["amount"];
+				}				
+				if(in_array($productid,$coffee_ids)){
+					$coffee_summ+=$item["amount"];
+				}
+				
+			}
+			
+		}
+		
+		$coffe_akb_flag=$coffee_summ>$coffee_akb_summ;
+		$tea_akb_flag=$tea_summ>$tea_akb_summ;
+		
+		$group["tea_summ"]=$tea_summ;
+		$group["coffee_summ"]=$coffee_summ;
+		$group["coffe_akb_flag"]=$coffe_akb_flag;
+		$group["tea_akb_flag"]=$tea_akb_flag;
+		
+		$extended_groups[]=$group;
+	}
+	
+	if ($groups) {
+		$response["error"] = false;
+		$response["success"] = 1;		
+		$response["message"] = "Success. Groups count=".count($groups);		
+		$response["groups"] = $extended_groups;
+		
+	}
+	else {
+		$response["error"] = true;
+		$response["success"] = 0;
+		$response["message"] = "Failed to get groups list. Please try again";
+	}
+	
+	
+
+	echoResponse(200, $response);
+});
+
+/**
+ * Получаем заказы агента для аналитики
+ * agentid - id агента по которому нужна аналитика
+ * Возвращаемое значение - краткая информация по заказам
+ * method POST
+ */
+$app->post('/analytic_agent_kustuk/:agentid/orders/:date_from/:date_to', 'authenticate', function($agentid,$date_from,$date_to) use ($app) {
+
+	global $user_id;	
+	$contractorid=127;//Kustuk id
+	
+	// array for final json response
+	$response = array();
+
+	error_log("-------------/analytic_agent_kustuk/".$agentid."/orders----------------");
+	error_log("|agentid=".$agentid." user_id=".$user_id." contractorid=".$contractorid." date_from=".$date_from." date_to=".$date_to."|");
+
+	$timestamp_from = DateTime::createFromFormat('Y-m-d', $date_from)->getTimestamp();
+	$timestamp_to = DateTime::createFromFormat('Y-m-d', $date_to)->getTimestamp();
+	
+	error_log("|timestamp_from=".$timestamp_from." timestamp_to=".$timestamp_to."|");
+	
+	if(empty($timestamp_from) || empty($timestamp_to)){
+		$response["error"] = true;
+		$response["success"] = 0;
+		$response["message"] = "Date format incorrect";
+		echoResponse(200, $response);
+	}
+	
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+	
+	permissionInGroup($user_id,$contractorid,$db_profile);
+	
+	if($user_id!=$agentid){
+		permissionAdminInGroup($user_id,$contractorid,$db_profile);
+	}
+	
+	$orders = $db_fabricant->getAnalyticAgentOrders($contractorid, $agentid, $timestamp_from, $timestamp_to);
+	if ($orders) {
+		$response["error"] = false;
+		$response["success"] = 1;
+		$response["message"] = "Success. Orders count=".count($orders);
+		$response["customers"] = $orders;
+		
+	}else {
+		$response["error"] = true;
+		$response["success"] = 0;
+		$response["message"] = "Failed to get orders list. Please try again";
+	}
+	
+	
+
+	echoResponse(200, $response);
+});
+
+/**
+ * Получаем список магазинов у которые входят в базу 90
+ * Обновляет только таблиуцу analytic_groups, и только те строки которые есть в excel
+ * method POST
+ */
+$app->post('/analytic_groups_add_tag_kustuk_90', 'authenticate', function() use ($app) {
+	global $user_id;	
+	$contractorid=127;//Kustuk id
+	
+	// array for final json response
+	$response = array();
+
+	error_log("-------------analytic_groups_add_tag_kustuk_90----------------");
+	error_log("|user_id=".$user_id." contractorid=".$contractorid."|");
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+	
+	permissionFabricantAdmin($user_id);
+	
+	//-------------------Берем Excel файл----------------------------
+
+	if (!isset($_FILES["xls"])) {
+		throw new Exception('Param xls is missing');
+	}
+
+	// Check if the file is missing
+	if (!isset($_FILES["xls"]["name"])) {
+		throw new Exception('Property name of xls param is missing');
+	}
+
+	// Check the file size > 100MB
+	if($_FILES["xls"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
+
+	$tmpFile = $_FILES["xls"]["tmp_name"];
+
+	// Подключаем класс для работы с excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+
+	// Подключаем класс для вывода данных в формате excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
+
+	$objPHPExcel = PHPExcel_IOFactory::load($tmpFile);
+
+	// Set and get active sheet
+	$objPHPExcel->setActiveSheetIndex(0);
+	$worksheet = $objPHPExcel->getActiveSheet();
+	$worksheetTitle = $worksheet->getTitle();
+	$highestRow = $worksheet->getHighestRow();
+	$highestColumn = $worksheet->getHighestColumn();
+	$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+	$nrColumns = ord($highestColumn) - 64;
+
+	$db_fabricant = new DbHandlerFabricant();
+
+	$updated_groups=array();
+	for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
+		$cells = array();
+
+		for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
+			$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
+			$cells[] = $cell->getValue();
+		}
+
+		$id=$cells[7];
+		
+		if(!empty($id)){
+			$group=array();
+			$group["id"]=$id;
+				
+			$db_fabricant->addTagToAnalyticGroup("kustuk_90",$id);
+			
+			//$group["info"]=$db_fabricant->getAnalyticGroupById($id)["info"];		
+			//$group["hasTag"]=$db_fabricant->groupHasAnalyticTag("kustuk_90",$id);
+			
+			$updated_groups[]=$group;
+		}
+	}
+
+	$response=array();
+	$response["error"]=false;
+	$response["success"]=1;
+	$response["highestRow"]=$highestRow;
+	$response["updated_groups_count"]=count($updated_groups);
+	$response["updated_groups"]=$updated_groups;
+
+	echoResponse(200,$response);
+
+});
+
+
+/**
+ * Отчет о доходе с кустук
+ * С учетом всех поставок маазинов, независимо от пользователя сделавшего заказ
+ * method POST
+ */
+$app->get('/analytic_profit_report/:phone/:password', function($phone,$password) use ($app) {
+	
+	$contractorid=127;//Kustuk id
+	
+	error_log("-------------analytic_profit_report----------------");
+	error_log("|phone=".$phone." password=".$password."|");
+
+	$db_profile=new DbHandlerProfile();	
+	$db_fabricant = new DbHandlerFabricant();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+
+		$response = array();
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	$user=$db_profile->getUserByPhone($phone);
+	$user_id=$user["id"];	
+	error_log("user_id=".$user_id);
+	
+	permissionFabricantAdmin($user_id);
+	
+	$orders=$db_fabricant->getAnalyticProfitOrders();
+	
+	$xls_out=getExcelOfProfits($orders);
+
+	// Выводим содержимое файла
+	$objWriter = new PHPExcel_Writer_Excel5($xls_out);
+	$objWriter->save('php://output');
+	
+	/*$response=array();
+	$response["error"]=false;
+	$response["success"]=1;
+	$response["orders_count"]=count($orders);
+	$response["orders"]=$orders;
+	echoResponse(200,$response);*/
+
+});
+
+/**
+ * Отчет о всех заказах, с индикатором изменений
+ * С учетом всех поставок маазинов, независимо от пользователя сделавшего заказ
+ * method POST
+ */
+$app->get('/analytic_changed_orders_report/:phone/:password', function($phone,$password) use ($app) {
+	
+	$contractorid=127;//Kustuk id
+	
+	error_log("-------------analytic_changed_orders_report----------------");
+	error_log("|phone=".$phone." password=".$password."|");
+
+	$db_profile=new DbHandlerProfile();	
+	$db_fabricant = new DbHandlerFabricant();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+
+		$response = array();
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	$user=$db_profile->getUserByPhone($phone);
+	$user_id=$user["id"];	
+	error_log("user_id=".$user_id);
+	
+	permissionFabricantAdmin($user_id);
+	
+	$orders=$db_fabricant->getAnalyticChangedOrders();
+	
+	$xls_out=getExcelOfChangedOrders($orders);
+
+	// Выводим содержимое файла
+	$objWriter = new PHPExcel_Writer_Excel5($xls_out);
+	$objWriter->save('php://output');
+	
+	/*$response=array();
+	$response["error"]=false;
+	$response["success"]=1;
+	$response["orders_count"]=count($orders);
+	$response["orders"]=$orders;
+	echoResponse(200,$response);*/
+
+});
+
+//---------------------------------------------------------------------------
+
+/*
+	Формирует и возвращает файл Excel для расчета прибыли
+	Поля order :id,customerName		
+*/
+function getExcelOfProfits($orders){
+
+	// Подключаем класс для работы с excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+	// Подключаем класс для вывода данных в формате excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
+
+	// New PHPExcel class
+	$xls = new PHPExcel();
+
+	$sheet = $xls->setActiveSheetIndex(0);
+
+	$row_index=9;
+	
+	//Заполнение шапки
+	$sheet->setCellValue("A$row_index", 'ИД');
+	$sheet->setCellValue("B$row_index", 'CustomerID');
+	$sheet->setCellValue("C$row_index", 'Заказчик');
+	$sheet->setCellValue("D$row_index", 'Адрес');
+	$sheet->setCellValue("E$row_index", 'Сумма');
+	$sheet->setCellValue("F$row_index", 'Статус');
+	$sheet->setCellValue("G$row_index", 'Дата создания');
+
+	$row_index=10;
+
+	foreach($orders as $order){
+
+		$sheet->setCellValue("A$row_index", $order["id"]);
+		$sheet->setCellValue("B$row_index", $order["customerid"]);
+		$sheet->setCellValue("C$row_index", $order["customerName"]);
+		$sheet->setCellValue("D$row_index", $order["address"]);
+		$sheet->setCellValue("E$row_index", $order["amount"]);
+		$sheet->setCellValue("F$row_index", $order["status"]);
+		$sheet->setCellValue("G$row_index", $order["created_at"]);
+
+		$row_index++;
+	}
+	
+	//Ставим автоширину колонок
+	$sheet->getColumnDimension('C')->setWidth(40);
+	$sheet->getColumnDimension('D')->setWidth(40);
+	$sheet->getColumnDimension('E')->setWidth(12);
+	$sheet->getColumnDimension('G')->setWidth(20);
+
+	// Выводим HTTP-заголовки
+	 header ( "Expires: Mon, 1 Apr 1974 05:00:00 GMT" );
+	 header ( "Last-Modified: " . gmdate("D,d M YH:i:s") . " GMT" );
+	 header ( "Cache-Control: no-cache, must-revalidate" );
+	 header ( "Pragma: no-cache" );
+	 header ( "Content-type: application/vnd.ms-excel" );
+	 header ( "Content-Disposition: attachment; filename=matrix.xls" );
+
+	return $xls;
+}
+
+/*
+	Формирует и возвращает файл Excel для расчета прибыли
+	Поля order :id,customerName		
+*/
+function getExcelOfChangedOrders($orders){
+
+	// Подключаем класс для работы с excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+	// Подключаем класс для вывода данных в формате excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
+
+	// New PHPExcel class
+	$xls = new PHPExcel();
+
+	$sheet = $xls->setActiveSheetIndex(0);
+
+	$row_index=9;
+	
+	//Заполнение шапки
+	$sheet->setCellValue("A$row_index", 'ID');
+	$sheet->setCellValue("B$row_index", 'AgentID');
+	$sheet->setCellValue("C$row_index", 'CustomerID');
+	$sheet->setCellValue("D$row_index", 'Заказчик');
+	$sheet->setCellValue("E$row_index", 'Адрес');
+	$sheet->setCellValue("F$row_index", 'Статус');
+	$sheet->setCellValue("G$row_index", 'Исходная сумма');
+	$sheet->setCellValue("H$row_index", 'Конечная сумма');
+	$sheet->setCellValue("I$row_index", 'Разница сумм');
+	$sheet->setCellValue("J$row_index", 'DiffFlag');
+	$sheet->setCellValue("K$row_index", 'Уменьшение суммы');
+	$sheet->setCellValue("L$row_index", 'LesionFlag');
+	$sheet->setCellValue("M$row_index", 'Дата создания');
+
+	$row_index=10;
+
+	foreach($orders as $order){
+
+		$sheet->setCellValue("A$row_index", $order["id"]);
+		$sheet->setCellValue("B$row_index", $order["agentid"]);
+		$sheet->setCellValue("C$row_index", $order["customerid"]);
+		$sheet->setCellValue("D$row_index", $order["customerName"]);
+		$sheet->setCellValue("E$row_index", $order["address"]);
+		$sheet->setCellValue("F$row_index", $order["status"]);
+		$sheet->setCellValue("G$row_index", $order["initial_amount"]);
+		$sheet->setCellValue("H$row_index", $order["amount"]);
+		$sheet->setCellValue("I$row_index", $order["diff"]);
+		$sheet->setCellValue("J$row_index", $order["diff_flag"]);
+		$sheet->setCellValue("K$row_index", $order["lesion"]);
+		$sheet->setCellValue("L$row_index", $order["lesion_flag"]);
+		$sheet->setCellValue("M$row_index", $order["created_at"]);
+
+		$row_index++;
+	}
+	
+	//Ставим автоширину колонок
+	$sheet->getColumnDimension('D')->setWidth(40);
+	$sheet->getColumnDimension('E')->setWidth(40);
+	$sheet->getColumnDimension('M')->setWidth(20);
+
+	// Выводим HTTP-заголовки
+	 header ( "Expires: Mon, 1 Apr 1974 05:00:00 GMT" );
+	 header ( "Last-Modified: " . gmdate("D,d M YH:i:s") . " GMT" );
+	 header ( "Cache-Control: no-cache, must-revalidate" );
+	 header ( "Pragma: no-cache" );
+	 header ( "Content-type: application/vnd.ms-excel" );
+	 header ( "Content-Disposition: attachment; filename=matrix.xls" );
+
+	return $xls;
+}
 
 function getExcelOfProducts($products){
 
@@ -5103,6 +5653,7 @@ $app->post('/1c_orders/:phone/:password/:contractorid/:last_timestamp', function
 */
 $app->get('/copyproducts49to149', 'authenticate', function() use ($app) {
 
+	return;
 	global $user_id;
 	// creating new contracotor
 	$db = new DbHandlerProfile();

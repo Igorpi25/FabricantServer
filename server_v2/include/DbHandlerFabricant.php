@@ -124,8 +124,9 @@ class DbHandlerFabricant extends DbHandler{
 
 	public function getProductById($id) {
 
-		$stmt = $this->conn->prepare("SELECT p.id, p.contractorid, p.name, p.status, p.price, p.info, p.changed_at, p.code1c, p.article FROM products p WHERE p.id =?");
+		$stmt = $this->conn->prepare("SELECT id, contractorid, name, status, price, info, changed_at, code1c, article FROM products WHERE id = ? "); 
 		$stmt->bind_param("i", $id);
+		
 		if ($stmt->execute()) {
 
 			$stmt->store_result();
@@ -404,7 +405,7 @@ class DbHandlerFabricant extends DbHandler{
 		}
 	}
 
-  public function getAllProductsRestLikeObject() {
+	public function getAllProductsRestLikeObject() {
 
 		$stmt = $this->conn->prepare("SELECT `productid`,`rest` FROM `products_rest`");
 		if ($stmt->execute()) {
@@ -526,6 +527,10 @@ class DbHandlerFabricant extends DbHandler{
 				$res["customerid"] = $customerid;
 				$res["status"] = $status;
 				$res["record"] = $record;
+				
+				
+				
+				
 				$res["code1c"] = $code1c;
 
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
@@ -589,8 +594,27 @@ class DbHandlerFabricant extends DbHandler{
 				$record["status"] = $status;
 				$result[] = $record;
 			}
+			
 			$stmt->close();
-			return $result;
+			
+			$extended_results=array();
+			foreach($result as $record){
+				
+				$items=$record["items"];				
+				$extended_items=array();
+				foreach($items as $item){	
+				
+					$productid=intval($item["productid"]);
+					
+					$product=$this->getProductById($productid);
+					$item["article"]=$product["article"];					
+					$extended_items[]=$item;
+				}
+				$record["items"]=$extended_items;	
+				$extended_results[]=$record;
+			}
+			
+			return $extended_results;
 		}
 		else
 			return NULL;
@@ -598,20 +622,39 @@ class DbHandlerFabricant extends DbHandler{
 
 	public function getAllOrdersOfContractorIntervalWeb($contractorid, $interval) {
 		$stmt=$this->conn->prepare("
-			SELECT status, record FROM orders
-			WHERE contractorid=? AND created_at BETWEEN DATE_SUB(NOW(), INTERVAL ? DAY) AND NOW()
+			SELECT status, record FROM orders 
+			WHERE contractorid=? AND created_at BETWEEN DATE_SUB(NOW(), INTERVAL ? DAY) AND NOW() 
 		");
 		$stmt->bind_param("ii", $contractorid,$interval);
 		if ($stmt->execute()) {
 			$result=array();
 			$stmt->bind_result($status, $records);
 			while($stmt->fetch()) {
-				$record = json_decode($records, true);
+				$record = json_decode($records, true);							
 				$record["status"] = $status;
 				$result[] = $record;
 			}
+			
 			$stmt->close();
-			return $result;
+			
+			$extended_results=array();
+			foreach($result as $record){
+				
+				$items=$record["items"];				
+				$extended_items=array();
+				foreach($items as $item){	
+				
+					$productid=intval($item["productid"]);
+					
+					$product=$this->getProductById($productid);
+					$item["article"]=$product["article"];					
+					$extended_items[]=$item;
+				}
+				$record["items"]=$extended_items;	
+				$extended_results[]=$record;
+			}
+			
+			return $extended_results;
 		}
 		else
 			return NULL;
@@ -1326,6 +1369,461 @@ class DbHandlerFabricant extends DbHandler{
 		return true;
 	}
 
+	//---------------------Analytic-------------------------------------
+	
+	public function getAnalyticAgentOrders($contractorid, $userid, $timestamp_from, $timestamp_to) {
+
+        $stmt = $this->conn->prepare("
+			SELECT o.id, o.contractorid, o.customerid, SUBSTRING_INDEX( SUBSTRING_INDEX(o.record, '\"customerUserId\":', -1),',',1 ) as `customerUserId`, SUBSTRING_INDEX( SUBSTRING_INDEX(o.record, '\"customerUserName\":\"', -1),'\",',1 ) as `customerUserName`, SUBSTRING_INDEX( SUBSTRING_INDEX(o.record, '{\"itemsAmount\":', -1),'}',1 ) as `amount`, o.code1c IS NOT NULL AS `imported`, o.status, o.created_at, o.changed_at 
+			FROM orders o 
+			INNER JOIN ( 
+				SELECT groupid 
+				FROM group_users 
+				WHERE ( ( userid = ? ) AND ( status IN (0,1,2,8) ))  
+			) AS gu ON  ( o.customerid = gu.groupid ) 
+			LEFT OUTER JOIN groups AS g ON g.id = o.customerid 
+			WHERE ( (o.contractorid = ?)  AND (g.type = 1) AND ( g.status IN (1,2) ) AND ( o.changed_at >= ? ) AND ( o.changed_at <= ? ) ) ");
+
+		$date_from_string=date('Y-m-d H:i:s',$timestamp_from);
+		$date_to_string=date('Y-m-d H:i:s',$timestamp_to);
+
+        $stmt->bind_param( "iiss", $userid,$contractorid,$date_from_string,$date_to_string);
+
+		$orders=array();
+
+        if ($stmt->execute()) {
+
+            $stmt->bind_result($id,$contractorid,$customerid,$customerUserId,$customerUserName,$amount,$imported, $status, $created_at, $changed_at);
+
+            while($stmt->fetch()){
+
+	            $res= array();
+	            $res["id"] = $id;
+				$res["contractorid"] = $contractorid;
+	            $res["customerid"] = $customerid;
+				$res["customerUserId"] = $customerUserId;
+				$res["customerUserName"] = $customerUserName;
+				$res["amount"] = $amount;
+				$res["imported"] = $imported;
+	            $res["status"] = $status;
+				
+				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
+				$res["created_at"] = $timestamp_object->getTimestamp();
+
+	            $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+				$res["changed_at"] = $timestamp_object->getTimestamp();
+
+	            $orders[]=$res;
+	        }
+            $stmt->close();
+			
+			return $orders;
+
+        }else{
+			return NULL;
+		}
+		
+    }
+	
+	public function getAnalyticCustomerOrders($contractorid, $customerid, $timestamp_from, $timestamp_to) {
+
+        $stmt = $this->conn->prepare("
+			SELECT o.id, o.contractorid, o.customerid, o.record, o.status, o.created_at, o.changed_at 
+			FROM orders o
+			WHERE ( (o.contractorid = ?)  AND (o.customerid = ?) AND ( o.status IN (1,2) ) AND ( o.changed_at >= ? ) AND ( o.changed_at <= ? ) ) ");
+
+		$date_from_string=date('Y-m-d H:i:s',$timestamp_from);
+		$date_to_string=date('Y-m-d H:i:s',$timestamp_to);
+
+        $stmt->bind_param( "iiss", $contractorid,$customerid,$date_from_string,$date_to_string);
+
+		$orders=array();
+
+        if ($stmt->execute()) {
+
+            $stmt->bind_result($id,$contractorid,$customerid,$record, $status, $created_at, $changed_at);
+
+            while($stmt->fetch()){
+
+	            $res= array();
+	            $res["id"] = $id;
+				$res["contractorid"] = $contractorid;
+	            $res["customerid"] = $customerid;
+				$res["record"] = $record;
+	            $res["status"] = $status;
+				
+				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
+				$res["created_at"] = $timestamp_object->getTimestamp();
+
+	            $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+				$res["changed_at"] = $timestamp_object->getTimestamp();
+
+	            $orders[]=$res;
+	        }
+            $stmt->close();
+			
+			return $orders;
+
+        }else{
+			return $orders;
+		}
+		
+    }
+	
+	/**
+     * Get analytic groups of user
+     */
+    public function getAnalyticGroupsOfUser($userid) {
+
+            $stmt = $this->conn->prepare("
+				SELECT `g`.id, `g`.name, `g`.address, `g`.status, `gu`.`status` AS `status_in_group`, IF (`ag`.info REGEXP '\"kustuk_90\"',TRUE,FALSE) AS `kustuk_90`, `g`.created_at, `g`.changed_at  
+				FROM `group_users` AS `gu` 
+				LEFT JOIN `groups` AS `g` ON `gu`.groupid=`g`.id 
+				LEFT OUTER JOIN `analytic_groups` AS `ag` ON `gu`.groupid=`ag`.groupid 
+				WHERE ( 
+						`gu`.`userid`= ? 
+					AND 
+						`gu`.`status` IN ( 1, 2, 8, 0 ) 
+					AND 
+						`g`.`type`=1 
+				) 
+				");
+
+			$stmt->bind_param("i", $userid);
+
+			if($stmt->execute()){
+
+				$stmt->bind_result($id,$name,$address,$status,$status_in_group,$kustuk_90,$created_at,$changed_at);
+
+				$result=array();
+
+				while($stmt->fetch()){
+					$res=array();
+
+					$res["id"]=$id;
+					$res["name"]=$name;
+					$res["address"]=$address;
+					$res["status"]=$status;
+					$res["status_in_group"]=$status_in_group;
+					$res["kustuk_90"]=$kustuk_90;
+
+					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
+					$res["created_at"]=$timestamp_object->getTimestamp();
+
+					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+					$res["changed_at"] = $timestamp_object->getTimestamp();
+
+					$result[]=$res;
+				}
+				$stmt->close();
+
+				return $result;
+			}else{
+				return NULL;
+			}
+
+    }
+	
+	public function getAnalyticGroupById($groupid) {
+
+            $stmt = $this->conn->prepare("
+				SELECT g.id,g.groupid,g.info,g.changed_at 
+				FROM analytic_groups g 
+				WHERE ( g.groupid  = ? ) ");
+            $stmt->bind_param("i", $groupid);
+
+			if($stmt->execute()){
+
+				$stmt->bind_result($id,$groupid,$info,$changed_at);
+
+				if($stmt->fetch()){
+					$res=array();
+
+					$res["id"]=$id;
+					$res["groupid"]=$groupid;
+					$res["info"]=$info;
+
+					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+					$res["changed_at"] = $timestamp_object->getTimestamp();
+
+					$stmt->close();
+					return $res;
+				}
+				$stmt->close();
+
+			}
+			
+			return NULL;
+    }
+	
+	protected function setAnalyticGroupInfo($info,$groupid) {
+		$stmt = $this->conn->prepare("SELECT `groupid` FROM `analytic_groups` WHERE ( `groupid` = ? )");
+		$stmt->bind_param("i",$groupid);
+        $result = $stmt->execute();
+        $stmt->store_result();
+        $numrows = $stmt->num_rows;
+
+        if ($numrows > 0) {
+            $stmt = $this->conn->prepare("UPDATE `analytic_groups` SET `info` = ? WHERE ( `groupid` = ? )");
+			$stmt->bind_param("si",$info,$groupid);
+            $stmt->execute();
+            $stmt->close();
+        }
+        else {
+            $stmt = $this->conn->prepare("INSERT INTO analytic_groups(groupid,info,changed_at) values( ? , ? , CURRENT_TIMESTAMP() )");
+            $stmt->bind_param("is", $groupid, $info);
+            $stmt->execute();
+            $stmt->close();
+        }
+	
+	}
+	
+	public function addTagToAnalyticGroup($tag,$groupid){
+
+		$group=$this->getAnalyticGroupById($groupid);
+
+		if(!isset($group))
+			$group=array();
+
+		if(!isset($group["info"])){
+			$group["info"]="{}";
+		}
+
+		$info=json_decode($group["info"],true);
+
+		if(!isset($info["tags"])){
+			$info["tags"]=array();
+		}
+
+		$tags=$info["tags"];
+
+		if(($key = array_search($tag, $tags)) !== false) {
+			return;
+		}
+
+		$tags[]=$tag;
+
+		$info["tags"]=$tags;
+
+		$this->setAnalyticGroupInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $groupid);
+
+	}
+
+	public function removeTagFromAnalyticGroup($tag,$groupid){
+
+		$group=$this->getAnalyticGroupById($groupid);
+
+		if(!isset($group))
+			return;
+
+		if(!isset($group["info"])){
+			return;
+		}
+
+		$info=json_decode($group["info"],true);
+
+		if(!isset($info["tags"]))
+			return;
+
+		$tags=$info["tags"];
+
+		$tag_found=false;
+		while(($key = array_search($tag, $tags)) !== false) {
+			unset($tags[$key]);
+
+			$tags=array_values($tags);
+
+			$tag_found=true;
+		}
+
+		$info["tags"]=$tags;
+
+		if($tag_found){
+			$this->setAnalyticGroupInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $groupid);
+		}
+	}
+
+	public function groupHasAnalyticTag($tag,$groupid){
+
+		$group=$this->getAnalyticGroupById($groupid);
+
+		if(!isset($group))
+			return false;
+
+		if(!isset($group["info"])){			
+			return false;
+		}
+
+		$info=json_decode($group["info"],true);
+
+		if(!isset($info["tags"]))
+			return false;
+
+		$tags=$info["tags"];
+
+		if(($key = array_search($tag, $tags)) !== false) {
+			return true;
+		}
+		
+		return false;
+
+	}
+
+	/*
+	* Возвращает множество id продуктов с заданным тэгом
+	*/
+	public function getAnalyticProductsIdsWithTag($tag){
+		
+		$stmt = $this->conn->prepare("SELECT p.id FROM analytic_products p WHERE SUBSTRING_INDEX( SUBSTRING_INDEX(`info`, '\"tags\":[', -1),']',1 ) REGEXP ? ");
+		$stmt->bind_param("s", $tag);
+		
+		
+		$result=array();
+		
+		if ($stmt->execute()){
+			$stmt->store_result();
+			if($stmt->num_rows==0) return $result;
+			$stmt->bind_result($id);
+			while($stmt->fetch()){
+				$result[]=$id;
+			}
+			$stmt->close();
+			return $result;
+		} else {
+			return $result;
+		}
+	}
+	
+	/**
+     * Get analytic groups of user
+     */
+    public function getAnalyticProfitOrders() {
+
+            $stmt = $this->conn->prepare("
+				SELECT `o`.id,`o`.customerid,`g`.name,`g`.address, SUBSTRING_INDEX( SUBSTRING_INDEX(`record`, '{\"itemsAmount\":', -1),'}',1 ) as `amount`, `o`.status, `o`.created_at
+				FROM `orders` AS `o`
+				LEFT OUTER JOIN `group_users` AS `gu_252` ON ((`gu_252`.groupid = `o`.customerid) AND (`gu_252`.userid = 252 ))
+				LEFT OUTER JOIN `group_users` AS `gu_253` ON ((`gu_253`.groupid = `o`.customerid) AND (`gu_253`.userid = 253 ))
+				LEFT OUTER JOIN `group_users` AS `gu_254` ON ((`gu_254`.groupid = `o`.customerid) AND (`gu_254`.userid = 254 ))
+				LEFT OUTER JOIN `group_users` AS `gu_256` ON ((`gu_256`.groupid = `o`.customerid) AND (`gu_256`.userid = 256 ))
+				LEFT OUTER JOIN `groups` AS `g` ON (`g`.id = `o`.customerid)
+				WHERE `o`.`contractorid` = 127
+				AND `o`.`status` IN ( 1, 2 )
+				AND (
+					( `gu_252`.`status` IN (0,1,2,8) ) OR
+					( `gu_253`.`status` IN (0,1,2,8) ) OR
+					( `gu_254`.`status` IN (0,1,2,8) ) OR
+					( `gu_256`.`status` IN (0,1,2,8) )
+				)
+				AND `o`.`code1c` IS NOT NULL
+				AND (`o`.`created_at`>='2017-09-29')
+				AND (`o`.`created_at`<'2017-11-02')
+				");
+
+			//$stmt->bind_param("i", $userid);
+
+			if($stmt->execute()){
+
+				$stmt->bind_result($id,$customerid,$customerName,$address,$amount,$status,$created_at);
+
+				$result=array();
+
+				while($stmt->fetch()){
+					$res=array();
+
+					$res["id"]=$id;
+					$res["customerid"]=$customerid;
+					$res["customerName"]=$customerName;
+					$res["address"]=$address;
+					$res["amount"]=$amount;
+					$res["status"]=$status;
+					$res["created_at"]=$created_at;
+
+					$result[]=$res;
+				}
+				$stmt->close();
+
+				return $result;
+			}else{
+				return NULL;
+			}
+
+    }
+	
+	/*
+	* Аналитика измененные заказы, чтобы знать сколько потеряли при изменении заказа
+	*/
+	public function getAnalyticChangedOrders() {
+		
+        $stmt = $this->conn->prepare("
+			SELECT s.id, s.agentid, s.customerid, s.customerName, s.address, s.status, s.initial_amount, s.amount, s.diff, (s.diff<>0) AS diff_flag, IF (s.diff<0,s.diff,0) AS lesion, IF (s.diff<0,1,0) AS lesion_flag, s.created_at
+			FROM(
+				SELECT s.*, (amount-initial_amount) AS diff
+				FROM(
+					SELECT p.*, g.agentid, o.status, SUBSTRING_INDEX( SUBSTRING_INDEX( SUBSTRING_INDEX(p.`record`, '\"customerUserId\":', -1),',',1 ),'}',1 ) AS customerUserId, g.customerName,g.address, CAST( SUBSTRING_INDEX( SUBSTRING_INDEX(p.`record`, '{\"itemsAmount\":', -1),'}',1 ) AS DECIMAL(10,2) ) as `initial_amount`, CAST( SUBSTRING_INDEX( SUBSTRING_INDEX(o.`record`, '{\"itemsAmount\":', -1),'}',1 ) AS DECIMAL(10,2) ) as `amount`
+					FROM `orders_operations` AS `p`
+					INNER JOIN `orders` AS o ON o.id = p.orderid
+					INNER JOIN ( 
+							SELECT `g`.id, name AS customerName, address, gu.userid AS agentid
+							FROM `groups` AS `g`
+							INNER JOIN `group_users` AS `gu` ON ((`gu`.groupid = `g`.id) AND (`gu`.userid IN (252,253,254,256) ) AND (`gu`.`status` IN (0,1,2,8))) 
+							WHERE `g`.type=1
+							GROUP BY id 
+						) AS `g` ON (`g`.id = `o`.customerid)
+					WHERE ( 	
+						(p.type = 1) AND
+						(p.contractorid = ?) AND 
+						(p.`created_at`>=?) AND 
+						(p.`created_at`<?) AND
+						(`o`.`status` IN ( 1, 2 ) ) AND
+						(`o`.`code1c` IS NOT NULL )
+					) 
+				) AS s
+			) AS s
+			");
+
+		$contractorid=127; 
+		$date_from_string='2017-09-29'; 
+		$date_to_string='2017-11-2';
+		
+        $stmt->bind_param( "iss", $contractorid,$date_from_string,$date_to_string);
+
+		$orders=array();
+
+        if ($stmt->execute()) {
+
+            $stmt->bind_result($id,$agentid,$customerid,$customerName,$address,$status,$initial_amount,$amount,$diff,$diff_flag,$lesion,$lesion_flag,$created_at);
+
+            while($stmt->fetch()){
+
+	            $res= array();
+	            $res["id"] = $id;
+				$res["agentid"] = $agentid;
+	            $res["customerid"] = $customerid;
+				$res["customerName"] = $customerName;
+				$res["address"] = $address;
+				$res["status"] = $status;
+				$res["initial_amount"] = $initial_amount;
+				$res["amount"] = $amount;
+				$res["diff"] = $diff;
+	            $res["diff_flag"] = $diff_flag;
+				$res["lesion"] = $lesion;
+	            $res["lesion_flag"] = $lesion_flag;
+				
+				$res["created_at"] = $created_at;
+
+	            $orders[]=$res;
+	        }
+            $stmt->close();
+			
+			return $orders;
+
+        }else{
+			return NULL;
+		}
+		
+    }
+	
 	//----------------------Delta-----------------------------------------
 	public function getProductsDelta($timestamp) {
 
