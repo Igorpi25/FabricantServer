@@ -5204,6 +5204,110 @@ $app->post('/analytic_groups_add_tag_kustuk_90', 'authenticate', function() use 
 
 });
 
+/**
+ * Получаем список продуктов с отметкой чай/кофе
+ * Обновляет только таблиуцу analytic_products, и только те строки которые есть в excel
+ * method POST
+ */
+$app->post('/analytic_products_tea_coffee', 'authenticate', function() use ($app) {
+	global $user_id;	
+	$contractorid=127;//Kustuk id
+	
+	// array for final json response
+	$response = array();
+
+	error_log("-------------analytic_products_tea_coffee----------------");
+	error_log("|user_id=".$user_id." contractorid=".$contractorid."|");
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+	
+	permissionFabricantAdmin($user_id);
+	
+	//-------------------Берем Excel файл----------------------------
+
+	if (!isset($_FILES["xls"])) {
+		throw new Exception('Param xls is missing');
+	}
+
+	// Check if the file is missing
+	if (!isset($_FILES["xls"]["name"])) {
+		throw new Exception('Property name of xls param is missing');
+	}
+
+	// Check the file size > 100MB
+	if($_FILES["xls"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
+
+	$tmpFile = $_FILES["xls"]["tmp_name"];
+
+	// Подключаем класс для работы с excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel.php';
+
+	// Подключаем класс для вывода данных в формате excel
+	require_once dirname(__FILE__).'/../libs/PHPExcel/PHPExcel/IOFactory.php';
+
+	$objPHPExcel = PHPExcel_IOFactory::load($tmpFile);
+
+	// Set and get active sheet
+	$objPHPExcel->setActiveSheetIndex(0);
+	$worksheet = $objPHPExcel->getActiveSheet();
+	$worksheetTitle = $worksheet->getTitle();
+	$highestRow = $worksheet->getHighestRow();
+	$highestColumn = $worksheet->getHighestColumn();
+	$highestColumnIndex = PHPExcel_Cell::columnIndexFromString($highestColumn);
+	$nrColumns = ord($highestColumn) - 64;
+
+	$db_fabricant = new DbHandlerFabricant();
+
+	$updated_products=array();
+	for ($rowIndex = 2; $rowIndex <= $highestRow; ++$rowIndex) {
+		$cells = array();
+
+		for ($colIndex = 0; $colIndex < $highestColumnIndex; ++$colIndex) {
+			$cell = $worksheet->getCellByColumnAndRow($colIndex, $rowIndex);
+			$cells[] = $cell->getValue();
+		}
+
+		$id=$cells[0];
+		$tea_flag=($cells[13]==1);
+		$coffee_flag=($cells[14]==1);
+		
+		if(!empty($id)){
+			$product=array();
+			$product["id"]=$id;
+			
+			if($tea_flag){
+				$db_fabricant->addTagToAnalyticProduct("kustuk_tea",$id);
+			}
+			
+			if($coffee_flag){
+				$db_fabricant->addTagToAnalyticProduct("kustuk_coffee",$id);
+			}
+			
+			$product["info"]=$db_fabricant->getAnalyticProductById($id)["info"];		
+			//$product["kustuk_tea"]=$db_fabricant->productHasAnalyticTag("kustuk_tea",$id);
+			//$product["kustuk_coffee"]=$db_fabricant->productHasAnalyticTag("kustuk_coffee",$id);
+			
+			$updated_products[]=$product;
+		}
+	}
+	
+	
+	$response=array();
+	$response["error"]=false;
+	$response["success"]=1;
+	$response["highestRow"]=$highestRow;
+	$response["updated_products_count"]=count($updated_products);
+	$response["updated_products"]=$updated_products;
+	
+	$response["tea_products"]=$db_fabricant->getAnalyticProductsIdsWithTag("kustuk_tea");
+	$response["coffee_products"]=$db_fabricant->getAnalyticProductsIdsWithTag("kustuk_coffee");
+		
+	echoResponse(200,$response);
+
+});
 
 /**
  * Отчет о доходе с кустук

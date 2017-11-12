@@ -1371,6 +1371,8 @@ class DbHandlerFabricant extends DbHandler{
 
 	//---------------------Analytic-------------------------------------
 	
+	//CRM
+	
 	public function getAnalyticAgentOrders($contractorid, $userid, $timestamp_from, $timestamp_to) {
 
         $stmt = $this->conn->prepare("
@@ -1470,9 +1472,8 @@ class DbHandlerFabricant extends DbHandler{
 		
     }
 	
-	/**
-     * Get analytic groups of user
-     */
+	//Group 
+		
     public function getAnalyticGroupsOfUser($userid) {
 
             $stmt = $this->conn->prepare("
@@ -1668,24 +1669,25 @@ class DbHandlerFabricant extends DbHandler{
 		return false;
 
 	}
-
+	
+	//Product
+	
 	/*
 	* Возвращает множество id продуктов с заданным тэгом
 	*/
 	public function getAnalyticProductsIdsWithTag($tag){
 		
-		$stmt = $this->conn->prepare("SELECT p.id FROM analytic_products p WHERE SUBSTRING_INDEX( SUBSTRING_INDEX(`info`, '\"tags\":[', -1),']',1 ) REGEXP ? ");
+		$stmt = $this->conn->prepare("SELECT productid FROM analytic_products WHERE SUBSTRING_INDEX( SUBSTRING_INDEX(`info`, '\"tags\":[', -1),']',1 ) REGEXP ? ");
 		$stmt->bind_param("s", $tag);
-		
 		
 		$result=array();
 		
 		if ($stmt->execute()){
 			$stmt->store_result();
 			if($stmt->num_rows==0) return $result;
-			$stmt->bind_result($id);
+			$stmt->bind_result($productid);
 			while($stmt->fetch()){
-				$result[]=$id;
+				$result[]=$productid;
 			}
 			$stmt->close();
 			return $result;
@@ -1693,6 +1695,152 @@ class DbHandlerFabricant extends DbHandler{
 			return $result;
 		}
 	}
+	
+	public function getAnalyticProductById($productid) {
+
+            $stmt = $this->conn->prepare("
+				SELECT p.id,p.productid,p.info,p.changed_at 
+				FROM analytic_products p 
+				WHERE ( p.productid  = ? ) ");
+            $stmt->bind_param("i", $productid);
+
+			if($stmt->execute()){
+
+				$stmt->bind_result($id,$productid,$info,$changed_at);
+
+				if($stmt->fetch()){
+					$res=array();
+
+					$res["id"]=$id;
+					$res["groupid"]=$productid;
+					$res["info"]=$info;
+
+					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+					$res["changed_at"] = $timestamp_object->getTimestamp();
+
+					$stmt->close();
+					return $res;
+				}
+				$stmt->close();
+
+			}
+			
+			return NULL;
+    }
+	
+	protected function setAnalyticProductInfo($info,$productid) {
+		$stmt = $this->conn->prepare("SELECT `productid` FROM `analytic_products` WHERE ( `productid` = ? )");
+		$stmt->bind_param("i",$productid);
+        $result = $stmt->execute();
+        $stmt->store_result();
+        $numrows = $stmt->num_rows;
+
+        if ($numrows > 0) {
+            $stmt = $this->conn->prepare("UPDATE `analytic_products` SET `info` = ? WHERE ( `productid` = ? )");
+			$stmt->bind_param("si",$info,$productid);
+            $stmt->execute();
+            $stmt->close();
+        }
+        else {
+            $stmt = $this->conn->prepare("INSERT INTO analytic_products(productid, info, changed_at) values( ? , ? , CURRENT_TIMESTAMP() )");
+            $stmt->bind_param("is", $productid, $info);
+            $stmt->execute();
+            $stmt->close();
+        }
+	
+	}
+	
+	public function addTagToAnalyticProduct($tag,$productid){
+
+		$product=$this->getAnalyticProductById($productid);
+
+		if(!isset($product))
+			$product=array();
+
+		if(!isset($product["info"])){
+			$product["info"]="{}";
+		}
+
+		$info=json_decode($product["info"],true);
+
+		if(!isset($info["tags"])){
+			$info["tags"]=array();
+		}
+
+		$tags=$info["tags"];
+
+		if(($key = array_search($tag, $tags)) !== false) {
+			return;
+		}
+
+		$tags[]=$tag;
+
+		$info["tags"]=$tags;
+
+		$this->setAnalyticProductInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $productid);
+
+	}
+
+	public function removeTagFromAnalyticProduct($tag,$productid){
+
+		$product=$this->getAnalyticProductById($productid);
+
+		if(!isset($product))
+			return;
+
+		if(!isset($product["info"])){
+			return;
+		}
+
+		$info=json_decode($product["info"],true);
+
+		if(!isset($info["tags"]))
+			return;
+
+		$tags=$info["tags"];
+
+		$tag_found=false;
+		while(($key = array_search($tag, $tags)) !== false) {
+			unset($tags[$key]);
+
+			$tags=array_values($tags);
+
+			$tag_found=true;
+		}
+
+		$info["tags"]=$tags;
+
+		if($tag_found){
+			$this->setAnalyticProductInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $productid);
+		}
+	}
+
+	public function productHasAnalyticTag($tag,$productid){
+
+		$product=$this->getAnalyticProductById($productid);
+
+		if(!isset($product))
+			return false;
+
+		if(!isset($product["info"])){			
+			return false;
+		}
+
+		$info=json_decode($product["info"],true);
+
+		if(!isset($info["tags"]))
+			return false;
+
+		$tags=$info["tags"];
+
+		if(($key = array_search($tag, $tags)) !== false) {
+			return true;
+		}
+		
+		return false;
+	}
+
+	//Reports
 	
 	/**
      * Get analytic groups of user
