@@ -5405,7 +5405,166 @@ $app->get('/analytic_changed_orders_report/:phone/:password', function($phone,$p
 
 });
 
-//---------------------------------------------------------------------------
+//--------------------------------------Kustuk synch-------------------------------------
+
+
+/**
+ * Проверка готов ли сервер принять массив
+ * method POST
+ */
+$app->post('/1c_synch_check_massive_state', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+
+	error_log("-------------1c_synch_check_massive_state----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+
+	//Проверка доступна ли 1С синхронизация у этого поставщика
+	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
+	
+	//---------------Чтение из файла-------------------------
+	
+	$control_file_name="1c_synch_control.json";
+	
+	try{
+		
+		$string_from_file=file_get_contents($control_file_name);
+		
+		$json_control=json_decode($string_from_file,true);
+		
+		if($json_control["one_shot"]==true){
+			
+			$response["error"] = false;	
+			$response["success"] = 1;	
+			$response["one_shot"]=true;
+			$response["message"]="Successfully get one shot";
+			error_log("one_shot. successfully get");
+			
+			$json_control["one_shot"]=false;
+			file_put_contents($control_file_name, json_encode($json_control,JSON_UNESCAPED_UNICODE));
+			
+			error_log("one_shot. successfully get");
+		}else{
+			$response["error"] = false;	
+			$response["success"] = 1;	
+			$response["one_shot"]=false;			
+			$response["message"]="One shot already got";
+			
+			error_log("one_shot. already used");
+		}
+		
+	}catch(Exception $e){
+		
+		$response["error"] = true;	
+		$response["success"] = 0;	
+		$response["message"]=$e->getMessage();
+		error_log($e->getMessage());
+	}
+	
+
+	echoResponse(200, $response);
+});
+
+/**
+ * Получаем массив для Кустук в виде расширенного Excel
+ * Расширение uid:контрагент, товар, заказ
+ * method POST
+ */
+$app->post('/1c_synch_get_massive_in_excel', function() use ($app) {
+	// array for final json response
+	$response = array();
+
+	verifyRequiredParams(array('contractorid', 'phone', 'password'));
+
+	$contractorid = $app->request->post('contractorid');
+	$phone = "7".$app->request->post('phone');
+	$password = $app->request->post('password');
+
+	error_log("-------------1c_synch_get_massive_in_excel----------------");
+	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
+
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+
+	//Проверяем логин и пароль
+	if(!$db_profile->checkLoginByPhone($phone,$password)){
+		//Проверяем доступ админской части группы
+		$response['error'] = true;
+        $response['message'] = 'Login failed. Incorrect credentials';
+		echoResponse(200,$response);
+		return;
+	}
+
+	$user=$db_profile->getUserByPhone($phone);
+	permissionAdminInGroup($user["id"],$contractorid,$db_profile);
+
+	//Проверка доступна ли 1С синхронизация у этого поставщика
+	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
+
+	if (!isset($_FILES["xls"])) {
+		throw new Exception('Param xls is missing');
+	}
+	// Check if the file is missing
+	if (!isset($_FILES["xls"]["name"])) {
+		throw new Exception('Property name of xls param is missing');
+	}
+	// Check the file size >100MB
+	if($_FILES["xls"]["size"] > 100*1024*1024) {
+		throw new Exception('File is too big');
+	}
+
+	$tmpFile = $_FILES["xls"]["tmp_name"];
+	
+	//Считываем закодированный файл xls в строку
+	$data = file_get_contents($tmpFile);
+	//Декодируем строку из base64 в нормальный вид
+	$data = base64_decode($data);
+	
+	//Запись в /v2/reports для лога
+	try{
+		$filename = '1c_synch_get_massive_in_excel'.date(" Y-m-d H-i-s ").uniqid().".json";
+		error_log("logged in file: ".$filename);		
+		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;		
+		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
+			@fwrite($fp, $data);
+			@fclose($fp);
+		}
+	}catch(Exception $e){
+		error_log("error when log in file /v2/reports/: ".$e->getMessage());
+	}
+	
+	//Освобождаем память занятую строкой (это файл, поэтому много занятой памяти)
+	unset($data);
+
+	$response["error"] = false;
+	$response["message"] = "Success";
+	$response["success"] = 1;
+
+	echoResponse(200, $response);
+});
+
+//---------------------------------------------------
 
 /*
 	Формирует и возвращает файл Excel для расчета прибыли
