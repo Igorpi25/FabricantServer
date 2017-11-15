@@ -1967,11 +1967,8 @@ $app->post('/cashtoinstallment', 'authenticate', function() use ($app) {
 
 //----------------------Статистика----------------------
 $app->post('/excel_massive_test', function() use ($app) {
-
 	$response=array();
 	$response["error"]=false;
-	$response["success"]=1;
-	$response["log"]=$_FILES["xls"];
 
 	echoResponse(200,$response);
 });
@@ -1984,58 +1981,75 @@ $app->post('/excel_massive', 'authenticate', function() use ($app) {
     $db_profile = new DbHandlerProfile();
     // только для кустука
     $contractorid = 127;
+    $readAverageData = true;
+    $returnResult = false;
 	permissionAdminInGroup($user_id, $contractorid, $db_profile);
+
+	$current = $app->request()->post('current');
+	$count = $app->request()->post('count');
+	$averageDataUrl = $app->request()->post('averageDataUrl');
 
     //-------------------Берем Excel файл----------------------------
     try {
-        if (!isset($_FILES["xls"])) {
-	        throw new Exception('Files is missing');
+        if (!isset($_FILES["statics1"]) || !isset($_FILES["statics2"])) {
+	        throw new Exception('Files static is missing');
 	    }
-	    if(count($_FILES['xls']["name"]) != 3) {
-			throw new Exception('Files count shoud be three');
+	    if (!isset($_FILES["massive"])) {
+	        throw new Exception('Files massive is missing');
+	    }
+    	if (!isset($_FILES["statics1"]["name"]) || !isset($_FILES["statics2"]["name"])) {
+        	throw new Exception('Property name of file static is missing');
+    	}
+    	if (!isset($_FILES["massive"]["name"])) {
+		    throw new Exception('Property name of file massive is missing');
 		}
-    	foreach ($_FILES['xls']["error"] as $key => $value) {
-    		if($value != 0) {
-    			throw new Exception('Error to upload file '.$_FILES['xls']["name"][$key]);
-    		}
-    	}
 	    // Check the file size > 100MB
-    	foreach ($_FILES['xls']["size"] as $key => $value) {
-    		if($value > 100*1024*1024) {
-    			throw new Exception('File '.$_FILES['xls']["name"][$key].' is too big');
-    		}
-    	}
+    	if($_FILES["statics1"]["size"] > 10*1024*1024 || $_FILES["statics2"]["size"] > 100*1024*1024) {
+	        throw new Exception('File static is too big');
+	    }
+	    if($_FILES["massive"]["size"] > 100*1024*1024) {
+	        throw new Exception('File massive is too big');
+	    }
+	    if (!isset($current) || !isset($count) || !isset($averageDataUrl)) {
+		    throw new Exception('Incorrect input data');
+		}
+		if ($current > $count) {
+		    throw new Exception('Incorrect input data');
+		}
+		if ($current == $count) {
+			$returnResult = true;
+		}
+		if (empty($averageDataUrl)) {
+			$readAverageData = false;
+		}
+    	// max_execution_time на 5 минут 
+    	set_time_limit(300);
+    	ini_set('memory_limit', '256M');
 
-    	$baseFileIndex = 0;
-    	$tmpIndexes = array();
-
-    	foreach ($_FILES["xls"]["name"] as $index => $name) {
-    		$ext = pathinfo($name, PATHINFO_EXTENSION);
-    		if ($ext == "xlsm") {
-    			$baseFileIndex = $index;
-    		} else {
-    			$tmpIndexes[] = $index;
-    		}
-    	}
-
-    	if ($_FILES['xls']["size"][$tmpIndexes[0]] > $_FILES['xls']["size"][$tmpIndexes[1]]) {
-    		$massiveFileIndex = $tmpIndexes[0];
-    		$articlesFileIndex = $tmpIndexes[1];
+    	$static1ext = pathinfo($_FILES["statics1"]["name"], PATHINFO_EXTENSION);
+    	$static2ext = pathinfo($_FILES["statics2"]["name"], PATHINFO_EXTENSION);
+    	if ($static1ext == "xlsm") {
+    		$baseTmpFile = $_FILES["statics1"]["tmp_name"];
+    		$articlesTmpFile = $_FILES["statics2"]["tmp_name"];
     	} else {
-    		$massiveFileIndex = $tmpIndexes[1];
-    		$articlesFileIndex = $tmpIndexes[0];
+    		$baseTmpFile = $_FILES["statics2"]["tmp_name"];
+    		$articlesTmpFile = $_FILES["statics1"]["tmp_name"];
     	}
 
-        $massiveTmpFile = $_FILES["xls"]["tmp_name"][$massiveFileIndex];
-        $articlesTmpFile = $_FILES["xls"]["tmp_name"][$articlesFileIndex];
-        $baseTmpFile = $_FILES["xls"]["tmp_name"][$baseFileIndex];
+        $massiveTmpFile = $_FILES["massive"]["tmp_name"];
+
 		// настройки PHPExcel (на хабре еаписали, что помогает при работе с большими файлами)
         // https://habrahabr.ru/post/148203/
         $cacheMethod = PHPExcel_CachedObjectStorageFactory::cache_to_phpTemp;
-        $cacheSettings = array( 'memoryCacheSize ' => '256MB');
+        $cacheSettings = array( 'memoryCacheSize ' => '256M');
         PHPExcel_Settings::setCacheStorageMethod($cacheMethod, $cacheSettings);
 
         // чтение файла с артикулами
+        error_log("-------------excel_massive----------------");
+        error_log("current file = ".$current);
+        error_log("count of files = ".$count);
+        error_log("average file url = ".$averageDataUrl);
+		error_log("start of read articles file");
         $articlesReader = PHPExcel_IOFactory::createReader('Excel5');
         $articlesReader->setReadDataOnly(true);
         $articlesPHPExcel = $articlesReader->load($articlesTmpFile);
@@ -2066,13 +2080,22 @@ $app->post('/excel_massive', 'authenticate', function() use ($app) {
         unset($articlesReader);
         unset($articlesPHPExcel);
 
+        error_log("start read base file");
         // чтение файла базы
         // названия столбцов для чтения из базы и индексы создаваемого массива
-        // 0 - F - code
-        // 1 - L - namett
-        // 2 - M - adrestt
-        // 3 - N - typett
-        // 4 - BS - active
+        //  0   С - city
+        //  1   D - city add
+        //  2   E - dist
+        //  3   F - code
+        //  4   G - ETP
+        //  5   H - merch
+        //  6   I - retail
+        //  7   J - union name
+        //  8   L - namett
+        //  9   M - adrestt
+        //  10  N - typett
+        //  11  O - princess
+        //  12  BS - active
 
         $baseReadSheet = 'Общая база розничных т_т_на сен';
         $baseStartRow = 9;
@@ -2101,6 +2124,16 @@ $app->post('/excel_massive', 'authenticate', function() use ($app) {
         for ($rowIndex = $baseStartRow; $rowIndex <= $baseHighestRow; ++$rowIndex) {
             $rowCustomerActivity = trim($baseWorksheet->getCell($activeColName.$rowIndex)->getValue());
             if (intval($rowCustomerActivity) === 1) {
+            	$rowCustomerCity = $baseWorksheet->getCell('C'.$rowIndex)->getValue();
+            	$rowCustomerCityAddit = $baseWorksheet->getCell('D'.$rowIndex)->getValue();
+            	$rowCustomerDistr = $baseWorksheet->getCell('E'.$rowIndex)->getValue();
+
+            	$rowCustomerETP = $baseWorksheet->getCell('G'.$rowIndex)->getValue();
+            	$rowCustomerMerch = $baseWorksheet->getCell('H'.$rowIndex)->getValue();
+            	$rowCustomerRetail = $baseWorksheet->getCell('I'.$rowIndex)->getValue();
+            	$rowCustomerUnionName = $baseWorksheet->getCell('J'.$rowIndex)->getValue();
+            	$rowCustomerPrincess = $baseWorksheet->getCell('O'.$rowIndex)->getValue();
+
                 $rowCustomerCode = trim($baseWorksheet->getCell('F'.$rowIndex)->getValue());
                 $rowCustomerName = $baseWorksheet->getCell('L'.$rowIndex)->getValue();
                 $rowCustomerAddress = $baseWorksheet->getCell('M'.$rowIndex)->getValue();
@@ -2110,19 +2143,36 @@ $app->post('/excel_massive', 'authenticate', function() use ($app) {
 	                $checkCustomersWithEmptyCode[$rowCustomerCode] = [
 	                    'name' => $rowCustomerName,
 	                    'address' => $rowCustomerAddress,
-	                    'type' => $rowCustomerType
+	                    'type' => $rowCustomerType,
+	                    'city' => $rowCustomerCity,
+	                    'cityAddit' => $rowCustomerCityAddit,
+	                    'distr' => $rowCustomerDistr,
+	                    'etp' => $rowCustomerETP,
+	                    'merch' => $rowCustomerMerch,
+	                    'retail' => $rowCustomerRetail,
+	                    'unionName' => $rowCustomerUnionName,
+	                    'princess' => $rowCustomerPrincess
 	                ];
                 }
                 $checkCustomers[$rowCustomerCode] = [
                     'name' => $rowCustomerName,
                     'address' => $rowCustomerAddress,
-                    'type' => $rowCustomerType
+                    'type' => $rowCustomerType,
+                    'city' => $rowCustomerCity,
+                    'cityAddit' => $rowCustomerCityAddit,
+                    'distr' => $rowCustomerDistr,
+                    'etp' => $rowCustomerETP,
+                    'merch' => $rowCustomerMerch,
+                    'retail' => $rowCustomerRetail,
+                    'unionName' => $rowCustomerUnionName,
+                    'princess' => $rowCustomerPrincess
                 ];
             }
         }
         unset($baseReader);
         unset($basePHPExcel);
 
+        error_log("start read massive file");
         // названия столбцов для чтения из массива и индексы создаваемого массива
         // 0 - e - tp
         // 1 - f - kodtt
@@ -2155,8 +2205,18 @@ $app->post('/excel_massive', 'authenticate', function() use ($app) {
         $massiveHighestColumn = $massiveWorksheet->getHighestColumn();
         $massiveHighestColumnIndex = PHPExcel_Cell::columnIndexFromString($massiveHighestColumn);
         $massiveHighestColumn++;
+        
+        error_log("end of read massive file");
+
         // сгруппированный массив по названию и адресу точки
-        $tradePoints = array();
+        if ($readAverageData) {
+        	error_log("reading average data");
+	   		$tradePoints = json_decode(file_get_contents($_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$averageDataUrl), TRUE);
+	   		error_log("readed average data from url = ".$_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$averageDataUrl);
+        } else {
+        	error_log("created new average data");
+        	$tradePoints = array();
+        }
 
         for ($rowIndex = 2; $rowIndex <= $massiveHighestRow; ++$rowIndex) {
             $rowTradePointCode = trim($massiveWorksheet->getCell('F'.$rowIndex)->getValue());
@@ -2189,129 +2249,213 @@ $app->post('/excel_massive', 'authenticate', function() use ($app) {
         unset($massiveReader);
         unset($massivePHPExcel);
 
-        // New PHPExcel class
-        $newformFile = new PHPExcel();
-        // Set and get active sheet
-        $newformFile->setActiveSheetIndex(0);
-        $newformDataWorkSheet = $newformFile->getActiveSheet();
-        // Sheet title
-        $newformDataWorkSheet->setTitle('Данные для newform');
-
-        $newformLogWorkSheet = new PHPExcel_Worksheet($newformFile, 'Данные для newform по артикулам');
-        $newformMassiveDataWorkSheet = new PHPExcel_Worksheet($newformFile, 'Данные массива');
-
-        $newformFile->addSheet($newformLogWorkSheet, 1);
-        $newformFile->addSheet($newformMassiveDataWorkSheet, 2);
-
-        // Заголовки листов
-        $newformMassiveDataWorkSheet->setCellValue('H1', 'Код торговой точки');
-        $newformMassiveDataWorkSheet->setCellValue('I1', 'Название торговой точки');
-        $newformMassiveDataWorkSheet->setCellValue('J1', 'Адрес');
-        $newformDataWorkSheet->setCellValue('H1', 'Код торговой точки');
-        $newformDataWorkSheet->setCellValue('I1', 'Название торговой точки');
-        $newformDataWorkSheet->setCellValue('J1', 'Адрес');
-        $newformLogWorkSheet->setCellValue('H1', 'Код торговой точки');
-        $newformLogWorkSheet->setCellValue('I1', 'Название торговой точки');
-        $newformLogWorkSheet->setCellValue('J1', 'Адрес');
-        foreach ($newformColumnNames as $colIndex => $colName) {
-            $newformMassiveDataWorkSheet->setCellValue($colIndex.'1', $colName);
-            $newformDataWorkSheet->setCellValue($colIndex.'1', $colName);
-            $newformLogWorkSheet->setCellValue($colIndex.'1', $colName);
-        }
-        // Данные по артикулам
-        $rowIndex = 2;
-        foreach ($checkCustomers as $checkCustomerCode => $checkCustomer) {
-        	$newformLogWorkSheet->setCellValue('H'.$rowIndex, $checkCustomerCode);
-            $newformLogWorkSheet->setCellValue('I'.$rowIndex, $checkCustomer["name"]);
-            $newformLogWorkSheet->setCellValue('J'.$rowIndex, $checkCustomer["address"]);
-            if (isset($tradePoints[$checkCustomerCode])) {
-            	foreach ($tradePoints[$checkCustomerCode]["items"] as $colIndex => $colArticles) {
-            		$newformLogWorkSheet->setCellValue($colIndex.$rowIndex, implode(";", array_keys($colArticles)));
-	            }
-            }
-            $rowIndex++;
-        }
-
-        // суммируем знаения по колонке
-        foreach ($tradePoints as $tradePointKey => $tradePoint) {
-            foreach ($tradePoint["items"] as $colName => $colArticles) {
-                $summ = 0;
-                foreach ($colArticles as $article => $count) {
-                    $summ += $count;
-                }
-                if ($summ > 0) {
-                    $tradePoints[$tradePointKey]["items"][$colName] = $summ;
-                } else {
-                    unset($tradePoints[$tradePointKey]["items"][$colName]);
-                }
-            }
-        }
-        // Данные указанные в базе
-        $rowIndex = 2;
-        foreach ($checkCustomers as $checkCustomerCode => $checkCustomer) {
-        	$newformDataWorkSheet->setCellValue('H'.$rowIndex, $checkCustomerCode);
-            $newformDataWorkSheet->setCellValue('I'.$rowIndex, $checkCustomer["name"]);
-            $newformDataWorkSheet->setCellValue('J'.$rowIndex, $checkCustomer["address"]);
-            if (isset($tradePoints[$checkCustomerCode])) {
-            	foreach ($tradePoints[$checkCustomerCode]["items"] as $colIndex => $count) {
-	                $newformDataWorkSheet->setCellValue($colIndex.$rowIndex, $count);
-	            }
-            } else {
-            	$newformDataWorkSheet->getStyle('H'.$rowIndex)
-				    ->getFill()->setFillType(PHPExcel_Style_Fill::FILL_SOLID);
-				if (strpos( $checkCustomerCode, 'tmpCode') !== FALSE) {
-					$newformDataWorkSheet->getStyle('H'.$rowIndex)
-				    	->getFill()->getStartColor()->setARGB('FFFF0000');
-				} else {
-					$newformDataWorkSheet->getStyle('H'.$rowIndex)
-				    	->getFill()->getStartColor()->setARGB('FFFFFF00');
-				}
-            }
-            $rowIndex++;
-        }
-        // Все данные в массиве
-        $rowIndex = 2;
-        foreach ($tradePoints as $tradePointCode => $tradePoint) {
-        	$newformMassiveDataWorkSheet->setCellValue('H'.$rowIndex, $tradePointCode);
-            $newformMassiveDataWorkSheet->setCellValue('I'.$rowIndex, $tradePoint["name"]);
-            $newformMassiveDataWorkSheet->setCellValue('J'.$rowIndex, $tradePoint["address"]);
-            foreach ($tradePoint["items"] as $colIndex => $count) {
-                $newformMassiveDataWorkSheet->setCellValue($colIndex.$rowIndex, $count);
-            }
-            $rowIndex++;
-        }
-
-        //$newformLogWorkSheet->setCellValue('A1', 'Коды не найдены в массиве');
-        //$newformLogWorkSheet->setCellValue('A'.$logIndex, 'Коды не установлен в базе');
-        //$newformFile->setActiveSheetIndex(2);
-        //$newformFile->getActiveSheet()->getStyle('A1')->getFill()
-        //	->setFillType(PHPExcel_Style_Fill::FILL_SOLID)
-        //	->getStartColor()->setARGB('FFFFFF00');
-	    //$newformFile->getActiveSheet()->getStyle('A'.$rowIndex)->getFill()
-	    //	->setFillType(PHPExcel_Style_Fill::FILL_SOLID)
-	    //	->getStartColor()->setARGB('FFFF0000');
-        //$logIndex++;
-        //foreach ($checkCustomersWithEmptyCode as $code => $checkCustomer) {
-        //	$newformLogWorkSheet->setCellValue('A'.$logIndex, $code);
-        //	$newformLogWorkSheet->setCellValue('B'.$logIndex, $checkCustomer["name"]);
-        //	$newformLogWorkSheet->setCellValue('C'.$logIndex, $checkCustomer["address"]);
-        //	$logIndex++;
-        //}
-
-        $newformFileName = date('dmY-').uniqid('newform-data-').'.xls';
-        $newformFileNamePath = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$newformFileName;
-
-        //$newformFile->setActiveSheetIndex(0);
-        $objWriter = new PHPExcel_Writer_Excel5($newformFile);
-        $objWriter->save($newformFileNamePath);
-
         $response = array();
+        if (!$returnResult) {
+        	if (empty($averageDataUrl)) {
+        		$newAverageDataName = uniqid('newform-average-data-').'.json';
+	        	$averageDataUrl = $newAverageDataName;
+	        }
+        	$jsondata = json_encode($tradePoints);
+        	error_log("saving average data");
+		   	//write json data into data.json file
+		   	if(file_put_contents($_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$averageDataUrl, $jsondata)) {
+		   		error_log("average data saved");
+		    } else {
+		    	error_log("failed to save average data");
+		    }
+		    $response["error"] = false;
+	        $response["success"] = false;
+	        $response["current"] = $current;
+	        $response["count"] = $count;
+	        $response["averageDataUrl"] = $averageDataUrl;
+        } else {
+        	error_log("start exoprt data");
+	        // New PHPExcel class
+	        $newformFile = new PHPExcel();
+	        // Set and get active sheet
+	        $newformFile->setActiveSheetIndex(0);
+	        $newformDataWorkSheet = $newformFile->getActiveSheet();
+	        // Sheet title
+	        $newformDataWorkSheet->setTitle('Данные для newform');
+
+	        $newformLogWorkSheet = new PHPExcel_Worksheet($newformFile, 'Данные для newform по артикулам');
+	        $newformMassiveDataWorkSheet = new PHPExcel_Worksheet($newformFile, 'Логи');
+
+	        $newformFile->addSheet($newformLogWorkSheet, 1);
+	        $newformFile->addSheet($newformMassiveDataWorkSheet, 2);
+
+	        // Заголовки листов
+	        //$newformMassiveDataWorkSheet->setCellValue('H1', 'Код торговой точки');
+	        //$newformMassiveDataWorkSheet->setCellValue('I1', 'Название торговой точки');
+	        //$newformMassiveDataWorkSheet->setCellValue('J1', 'Адрес');
+	        $newformDataWorkSheet->setCellValue('H1', 'Единое наименование сети (только для сетей)');
+	        $newformDataWorkSheet->setCellValue('I1', 'Название торговой точки');
+	        $newformDataWorkSheet->setCellValue('J1', 'Адрес');
+
+	        $newformDataWorkSheet->setCellValue('A1', '№');
+	        $newformDataWorkSheet->setCellValue('B1', 'Город главн.');
+	        $newformDataWorkSheet->setCellValue('C1', 'Город доп.');
+	        $newformDataWorkSheet->setCellValue('D1', 'Дистрибьютор');
+	        $newformDataWorkSheet->setCellValue('E1', 'ЭТП');
+	        $newformDataWorkSheet->setCellValue('F1', 'Мерчендайзер');
+	        $newformDataWorkSheet->setCellValue('G1', 'Ключевая розница (отметить "1")');
+	        $newformDataWorkSheet->setCellValue('K1', 'Тип торговой точки');
+	        $newformDataWorkSheet->setCellValue('L1', 'Асс. миним. по Принцессам (20, 15, 22, 26, 35, 44)');
+
+	        $newformLogWorkSheet->setCellValue('H1', 'Единое наименование сети (только для сетей)');
+	        $newformLogWorkSheet->setCellValue('I1', 'Название торговой точки');
+	        $newformLogWorkSheet->setCellValue('J1', 'Адрес');
+
+	        $newformLogWorkSheet->setCellValue('A1', '№');
+	        $newformLogWorkSheet->setCellValue('B1', 'Город главн.');
+			$newformLogWorkSheet->setCellValue('C1', 'Город доп.');
+			$newformLogWorkSheet->setCellValue('D1', 'Дистрибьютор');
+			$newformLogWorkSheet->setCellValue('E1', 'ЭТП');
+			$newformLogWorkSheet->setCellValue('F1', 'Мерчендайзер');
+			$newformLogWorkSheet->setCellValue('G1', 'Ключевая розница (отметить "1")');
+			$newformLogWorkSheet->setCellValue('K1', 'Тип торговой точки');
+			$newformLogWorkSheet->setCellValue('L1', 'Асс. миним. по Принцессам (20, 15, 22, 26, 35, 44)');
+
+			$newformMassiveDataWorkSheet->setCellValue('A1', 'Строка в Данные для newform');
+	        $newformMassiveDataWorkSheet->setCellValue('B1', 'Код торговой точки');
+	        $newformMassiveDataWorkSheet->setCellValue('C1', 'Название торговой точки');
+	        $newformMassiveDataWorkSheet->setCellValue('D1', 'Адрес');
+
+	        foreach ($newformColumnNames as $colIndex => $colName) {
+	            //$newformMassiveDataWorkSheet->setCellValue($colIndex.'1', $colName);
+	            $newformDataWorkSheet->setCellValue($colIndex.'1', $colName);
+	            $newformLogWorkSheet->setCellValue($colIndex.'1', $colName);
+	        }
+	        // Данные по артикулам
+	        $rowIndex = 2;
+	        foreach ($checkCustomers as $checkCustomerCode => $checkCustomer) {
+	        	$newformLogWorkSheet->setCellValue('H'.$rowIndex, $checkCustomer["unionName"]);
+	            $newformLogWorkSheet->setCellValue('I'.$rowIndex, $checkCustomer["name"]);
+	            $newformLogWorkSheet->setCellValue('J'.$rowIndex, $checkCustomer["address"]);
+
+	            $newformLogWorkSheet->setCellValue('B'.$rowIndex, $checkCustomer["city"]);
+	            $newformLogWorkSheet->setCellValue('C'.$rowIndex, $checkCustomer["cityAddit"]);
+	            $newformLogWorkSheet->setCellValue('D'.$rowIndex, $checkCustomer["distr"]);
+	            $newformLogWorkSheet->setCellValue('E'.$rowIndex, $checkCustomer["etp"]);
+	            $newformLogWorkSheet->setCellValue('F'.$rowIndex, $checkCustomer["merch"]);
+	            $newformLogWorkSheet->setCellValue('G'.$rowIndex, $checkCustomer["retail"]);
+	            $newformLogWorkSheet->setCellValue('K'.$rowIndex, $checkCustomer["type"]);
+	            $newformLogWorkSheet->setCellValue('L'.$rowIndex, $checkCustomer["princess"]);
+
+	            if (isset($tradePoints[$checkCustomerCode])) {
+	            	foreach ($tradePoints[$checkCustomerCode]["items"] as $colIndex => $colArticles) {
+	            		$newformLogWorkSheet->setCellValue($colIndex.$rowIndex, implode(";", array_keys($colArticles)));
+		            }
+	            }
+	            $rowIndex++;
+	        }
+
+	        // суммируем знаения по колонке
+	        foreach ($tradePoints as $tradePointKey => $tradePoint) {
+	            foreach ($tradePoint["items"] as $colName => $colArticles) {
+	                $summ = 0;
+	                foreach ($colArticles as $article => $count) {
+	                    $summ += $count;
+	                }
+	                if ($summ > 0) {
+	                    $tradePoints[$tradePointKey]["items"][$colName] = $summ;
+	                } else {
+	                    unset($tradePoints[$tradePointKey]["items"][$colName]);
+	                }
+	            }
+	        }
+	        // Данные указанные в базе
+	        $rowIndex = 2;
+	        $logIndex = 2;
+	        foreach ($checkCustomers as $checkCustomerCode => $checkCustomer) {
+	        	$newformDataWorkSheet->setCellValue('H'.$rowIndex, $checkCustomer["unionName"]);
+	            $newformDataWorkSheet->setCellValue('I'.$rowIndex, $checkCustomer["name"]);
+	            $newformDataWorkSheet->setCellValue('J'.$rowIndex, $checkCustomer["address"]);
+
+	            $newformDataWorkSheet->setCellValue('B'.$rowIndex, $checkCustomer["city"]);
+	            $newformDataWorkSheet->setCellValue('C'.$rowIndex, $checkCustomer["cityAddit"]);
+	            $newformDataWorkSheet->setCellValue('D'.$rowIndex, $checkCustomer["distr"]);
+	            $newformDataWorkSheet->setCellValue('E'.$rowIndex, $checkCustomer["etp"]);
+	            $newformDataWorkSheet->setCellValue('F'.$rowIndex, $checkCustomer["merch"]);
+	            $newformDataWorkSheet->setCellValue('G'.$rowIndex, $checkCustomer["retail"]);
+	            $newformDataWorkSheet->setCellValue('K'.$rowIndex, $checkCustomer["type"]);
+	            $newformDataWorkSheet->setCellValue('L'.$rowIndex, $checkCustomer["princess"]);
+
+	            if (isset($tradePoints[$checkCustomerCode])) {
+	            	foreach ($tradePoints[$checkCustomerCode]["items"] as $colIndex => $count) {
+		                $newformDataWorkSheet->setCellValue($colIndex.$rowIndex, $count);
+		            }
+	            } else {
+	            	/*$newformDataWorkSheet->getStyle('I'.$rowIndex)
+					    ->getFill()->setFillType(PHPExcel_Style_Fill::FILL_SOLID);
+					if (strpos( $checkCustomerCode, 'tmpCode') !== FALSE) {
+						$newformDataWorkSheet->getStyle('I'.$rowIndex)
+					    	->getFill()->getStartColor()->setARGB('FFFF0000');
+					} else {
+						$newformDataWorkSheet->getStyle('I'.$rowIndex)
+					    	->getFill()->getStartColor()->setARGB('FFFFFF00');
+					}*/
+					$newformMassiveDataWorkSheet->setCellValue('A'.$logIndex, $rowIndex);
+					$newformMassiveDataWorkSheet->setCellValue('B'.$logIndex, $checkCustomerCode);
+					$newformMassiveDataWorkSheet->setCellValue('C'.$logIndex, $checkCustomer["name"]);
+					$newformMassiveDataWorkSheet->setCellValue('D'.$logIndex, $checkCustomer["address"]);
+					
+					if (strpos( $checkCustomerCode, 'tmpCode') !== FALSE) {
+						$newformMassiveDataWorkSheet->setCellValue('E'.$logIndex, 'Код не установлен в базе');
+					} else {
+						$newformMassiveDataWorkSheet->setCellValue('E'.$logIndex, 'Код не найден в массиве');
+					}
+					$logIndex++;
+	            }
+	            $rowIndex++;
+	        }
+	        // Все данные в массиве
+	        //$rowIndex = 2;
+	        //foreach ($tradePoints as $tradePointCode => $tradePoint) {
+	        //	$newformMassiveDataWorkSheet->setCellValue('H'.$rowIndex, $tradePointCode);
+	        //    $newformMassiveDataWorkSheet->setCellValue('I'.$rowIndex, $tradePoint["name"]);
+	        //    $newformMassiveDataWorkSheet->setCellValue('J'.$rowIndex, $tradePoint["address"]);
+	        //    foreach ($tradePoint["items"] as $colIndex => $count) {
+	        //        $newformMassiveDataWorkSheet->setCellValue($colIndex.$rowIndex, $count);
+	        //    }
+	        //    $rowIndex++;
+	        //}
+
+	        //$newformLogWorkSheet->setCellValue('A1', 'Коды не найдены в массиве');
+	        //$newformLogWorkSheet->setCellValue('A'.$logIndex, 'Коды не установлен в базе');
+	        //$newformFile->setActiveSheetIndex(2);
+	        //$newformFile->getActiveSheet()->getStyle('A1')->getFill()
+	        //	->setFillType(PHPExcel_Style_Fill::FILL_SOLID)
+	        //	->getStartColor()->setARGB('FFFFFF00');
+		    //$newformFile->getActiveSheet()->getStyle('A'.$rowIndex)->getFill()
+		    //	->setFillType(PHPExcel_Style_Fill::FILL_SOLID)
+		    //	->getStartColor()->setARGB('FFFF0000');
+	        //$logIndex++;
+	        //foreach ($checkCustomersWithEmptyCode as $code => $checkCustomer) {
+	        //	$newformLogWorkSheet->setCellValue('A'.$logIndex, $code);
+	        //	$newformLogWorkSheet->setCellValue('B'.$logIndex, $checkCustomer["name"]);
+	        //	$newformLogWorkSheet->setCellValue('C'.$logIndex, $checkCustomer["address"]);
+	        //	$logIndex++;
+	        //}
+
+	        $newformFileName = date('dmY-').uniqid('newform-data-').'.xls';
+	        $newformFileNamePath = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$newformFileName;
+
+	        //$newformFile->setActiveSheetIndex(0);
+	        $objWriter = new PHPExcel_Writer_Excel5($newformFile);
+	        $objWriter->save($newformFileNamePath);
+	        $response["error"] = false;
+	        $response["success"] = true;
+	        $response["filename"] = 'http://fabricant.pro/v2/reports/'.$newformFileName;
+        }
+
         // если error ругается bootstrap-fileinput
         //$response["error"] = false;
-        $response["uploaded"] = 'OK';
-        $response["success"] = true;
+        //$response["uploaded"] = 'OK';
+        //$response["success"] = true;
         //$response["files"] = $_FILES["xls"];
-        $response["filename"] = 'http://fabricant.pro/v2/reports/'.$newformFileName;
+        //$response["filename"] = 'http://fabricant.pro/v2/reports/'.$newformFileName;
+        //$response["exec_time"] = date('i:s', time() - $startTime);
         //$response["checkCustomers"] = $checkCustomers;
         //$response["checkCustomersCount"] = count($checkCustomers);
 
@@ -2324,10 +2468,11 @@ $app->post('/excel_massive', 'authenticate', function() use ($app) {
     }
     catch (Exception $e) {
         // Exception occurred. Make error flag true
-        $response["error"] = $e->getMessage();
+        $response["error"] = true;
         $response["success"] = false;
         $response["uploaded"] = 'ERROR';
         $response["message"] = $e->getMessage();
+        error_log("exception e:".$e->getMessage());
     }
 
     echoResponse(200,$response);
