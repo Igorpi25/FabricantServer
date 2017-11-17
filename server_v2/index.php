@@ -883,7 +883,11 @@ $app->post('/orders/remove', 'authenticate', function () use ($app)  {
 		$order=$db_fabricant->getOrderById($orderid);
 
 		if( ($order["status"]==$db_fabricant::STATUS_ORDER_HIDDEN) ){
-			throw new Exception('Order status is not correct for update operation');
+			throw new Exception('Order status is not correct for remove operation');
+		}
+		
+		if( isset($order["code1c"]) ){
+			throw new Exception('Order has code_1c and cannot be removed by Android');
 		}
 
 		$user_status_in_contractor=$db_profile->getUserStatusInGroup($order["contractorid"],$user_id);
@@ -891,7 +895,12 @@ $app->post('/orders/remove', 'authenticate', function () use ($app)  {
 		if(($user_status_in_contractor!=1)&&($user_status_in_contractor!=2)){
 			$user_status_in_customer=$db_profile->getUserStatusInGroup($order["customerid"],$user_id);
 			if(($user_status_in_customer!=1)&&($user_status_in_customer!=2)&&($user_status_in_customer!=0)){
-				throw new Exception('User have no permission');
+				
+				if(($user_status_in_customer==8)&&($user_status_in_contractor==8)){
+					//nothing
+				}else{				
+					throw new Exception('User have no permission');
+				}
 			}else{
 				if( ($order["status"]!=$db_fabricant::STATUS_ORDER_PROCESSING) ){
 					throw new Exception('Order status is not correct for remove operation');

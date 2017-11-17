@@ -5561,6 +5561,8 @@ $app->get('/analytic_changed_orders_report/:phone/:password', function($phone,$p
 $app->post('/1c_synch_check_massive_state', function() use ($app) {
 	// array for final json response
 	$response = array();
+	
+	
 
 	verifyRequiredParams(array('contractorid', 'phone', 'password'));
 
@@ -5592,6 +5594,9 @@ $app->post('/1c_synch_check_massive_state', function() use ($app) {
 	//---------------Чтение из файла-------------------------
 	
 	$control_file_name="1c_synch_control.json";
+	
+	//Content of 1c_synch_control.json:
+	//{"in_json":false,"date_from":"2017-10-01","date_to":"2017-10-31"}
 	
 	try{
 		
