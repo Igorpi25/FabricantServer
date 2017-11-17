@@ -1774,12 +1774,10 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 
 
 			}else{
-
+				//Если заказ существует, то
 				error_log("Changing order: orderid=".$order["id"]);
 
-				//Если заказ существует, то обновляем данные
-
-				$record=json_decode($order["record"],true);
+				$record=json_decode($order["record"],true);				
 				$items=$record["items"];
 
 				if(!isset($items))$items=array();
@@ -1837,13 +1835,24 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 				if($orderstatus==1 && $order["status"]!=1){
 					$update_flag=true;
 				}
+				
+				//Transferring
+				$customerid=$db_profile->getCustomerIdInContractorByCode($contragentcode,$contractorid);
+				error_log("contragentid=".$customerid." code=".$contragentcode." contractorid=".$contractorid);					
+				if($customerid!=$order["customerid"]){
+					error_log("order.customerid=".$order["customerid"]);
+					error_log("order will be transferred");
+					$update_flag=true;
+				}					
 
 				if($update_flag){
 					$changed_flag=true;
 
 					$json_order=array();
 					$json_order["contractorid"]=$contractorid;
-					$json_order["customerid"]=$order["customerid"];
+					
+					
+					$json_order["customerid"]=$customerid;
 					$json_order["phone"]=$record["phone"];
 					$json_order["comment"]=$comment;
 					$json_order_items=array();
@@ -1896,7 +1905,8 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 					error_log("failed. visaAddedUserCode=".$visaAddedUserCode." is not associated with user");
 				}
 			}
-
+			
+			
 			$record=json_decode($order["record"],true);
 
 			if(empty($record["visa"])){
@@ -1913,9 +1923,10 @@ $app->post('/1c_orders_pass_kustuk', function() use ($app) {
 					error_log("failed. when addVisaToOrder");
 				}
 			}
-
+			
+			
 			$orderid=$order["id"];
-
+			
 			if($orderstatus==2 && $order["status"]!=2){
 				$changed_flag=true;
 				error_log("accepting order orderid=".$orderid." user_id=".$user_id);

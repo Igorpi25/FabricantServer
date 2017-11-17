@@ -1966,6 +1966,7 @@ $app->post('/cashtoinstallment', 'authenticate', function() use ($app) {
 });
 
 //----------------------Статистика----------------------
+
 $app->post('/excel_massive_test', function() use ($app) {
 	$response=array();
 	$response["error"]=false;
@@ -2252,7 +2253,7 @@ $app->post('/excel_massive', 'authenticate', function() use ($app) {
         $response = array();
         if (!$returnResult) {
         	if (empty($averageDataUrl)) {
-        		$newAverageDataName = uniqid('newform-average-data-').'.json';
+				$newAverageDataName = 'newform-average'.date("_Y-m-d_H-i-s_").uniqid().".json";
 	        	$averageDataUrl = $newAverageDataName;
 	        }
         	$jsondata = json_encode($tradePoints);
@@ -2438,7 +2439,7 @@ $app->post('/excel_massive', 'authenticate', function() use ($app) {
 	        //	$logIndex++;
 	        //}
 
-	        $newformFileName = date('dmY-').uniqid('newform-data-').'.xls';
+			$newformFileName = 'newform-data'.date("_Y-m-d_H-i-s_").uniqid().".xls";
 	        $newformFileNamePath = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$newformFileName;
 
 	        //$newformFile->setActiveSheetIndex(0);
@@ -5598,25 +5599,26 @@ $app->post('/1c_synch_check_massive_state', function() use ($app) {
 		
 		$json_control=json_decode($string_from_file,true);
 		
-		if($json_control["one_shot"]==true){
+		if($json_control["in_json"]==true){
 			
 			$response["error"] = false;	
 			$response["success"] = 1;	
-			$response["one_shot"]=true;
+			$response["in_json"]=true;
+			$response["date_from"]=$json_control["date_from"];
+			$response["date_to"]=$json_control["date_to"];
 			$response["message"]="Successfully get one shot";
-			error_log("one_shot. successfully get");
+			error_log("in_json. successfully get");
 			
-			$json_control["one_shot"]=false;
-			file_put_contents($control_file_name, json_encode($json_control,JSON_UNESCAPED_UNICODE));
-			
-			error_log("one_shot. successfully get");
+			//$json_control["in_json"]=false;
+			//file_put_contents($control_file_name, json_encode($json_control,JSON_UNESCAPED_UNICODE));			
+			//error_log("in_json. successfully saved with false");
 		}else{
 			$response["error"] = false;	
 			$response["success"] = 1;	
-			$response["one_shot"]=false;			
+			$response["in_json"]=false;			
 			$response["message"]="One shot already got";
 			
-			error_log("one_shot. already used");
+			error_log("in_json. already used");
 		}
 		
 	}catch(Exception $e){
@@ -5636,7 +5638,7 @@ $app->post('/1c_synch_check_massive_state', function() use ($app) {
  * Расширение uid:контрагент, товар, заказ
  * method POST
  */
-$app->post('/1c_synch_get_massive_in_excel', function() use ($app) {
+$app->post('/1c_synch_get_massive_in_json', function() use ($app) {
 	// array for final json response
 	$response = array();
 
@@ -5646,7 +5648,7 @@ $app->post('/1c_synch_get_massive_in_excel', function() use ($app) {
 	$phone = "7".$app->request->post('phone');
 	$password = $app->request->post('password');
 
-	error_log("-------------1c_synch_get_massive_in_excel----------------");
+	error_log("-------------1c_synch_get_massive_in_json----------------");
 	error_log("|contractorid=".$contractorid."_phone=".$phone."_password=".$password."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -5667,28 +5669,31 @@ $app->post('/1c_synch_get_massive_in_excel', function() use ($app) {
 	//Проверка доступна ли 1С синхронизация у этого поставщика
 	check1CSynchronizingEnabledInContractor($contractorid,$db_profile);
 
-	if (!isset($_FILES["xls"])) {
-		throw new Exception('Param xls is missing');
+	if (!isset($_FILES["json"])) {
+		throw new Exception('Param json is missing');
 	}
 	// Check if the file is missing
-	if (!isset($_FILES["xls"]["name"])) {
-		throw new Exception('Property name of xls param is missing');
+	if (!isset($_FILES["json"]["name"])) {
+		throw new Exception('Property name of json param is missing');
 	}
 	// Check the file size >100MB
-	if($_FILES["xls"]["size"] > 100*1024*1024) {
+	if($_FILES["json"]["size"] > 100*1024*1024) {
 		throw new Exception('File is too big');
 	}
 
-	$tmpFile = $_FILES["xls"]["tmp_name"];
+	$tmpFile = $_FILES["json"]["tmp_name"];
 	
-	//Считываем закодированный файл xls в строку
+	//Считываем закодированный файл json в строку
 	$data = file_get_contents($tmpFile);
 	//Декодируем строку из base64 в нормальный вид
 	$data = base64_decode($data);
 	
+	error_log("data length: ".strlen($data));	
+	//error_log($data);
+	
 	//Запись в /v2/reports для лога
 	try{
-		$filename = '1c_synch_get_massive_in_excel'.date(" Y-m-d H-i-s ").uniqid().".json";
+		$filename = '1c_synch_get_massive_in_json'.date(" Y-m-d H-i-s ").uniqid().".json";
 		error_log("logged in file: ".$filename);		
 		$path = $_SERVER["DOCUMENT_ROOT"].'/v2/reports/'.$filename;		
 		if ( !empty($data) && ($fp = @fopen($path, 'wb')) ){
