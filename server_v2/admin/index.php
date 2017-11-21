@@ -5104,6 +5104,8 @@ $app->get('/check_products_uts_compatable', 'authenticate',function() use ($app)
 
 //-------------------------------Kustuk Analytic-------------------------------
 
+//------------------CRM Agent----------------
+
 /**
  * Получаем список групп для аналитики агента
  * agentid - id агента по которому нужна аналитика
@@ -5258,6 +5260,157 @@ $app->post('/analytic_agent_kustuk/:agentid/orders/:date_from/:date_to', 'authen
 	echoResponse(200, $response);
 });
 
+//-----------------CRM Admin----------------
+
+/**
+ * Получаем список всех групп причастных поставщику
+ * agentid - id агента по которому нужна аналитика
+ * Возвращаемое значение - группы
+ * method POST
+ */
+$app->post('/analytic_admin_kustuk/groups/:date_from/:date_to', 'authenticate', function($date_from,$date_to) use ($app) {
+
+	global $user_id;	
+	$contractorid=127;//Kustuk id
+	
+	$tea_akb_summ=2000;
+	$coffee_akb_summ=500;
+	
+	// array for final json response
+	$response = array();
+		
+	error_log("-------------/analytic_admin_kustuk/groups----------------");
+	error_log("|user_id=".$user_id." contractorid=".$contractorid."|");
+	
+	//$date_from='2017-09-29';
+	//$date_to='2017-11-02';
+
+	$timestamp_from = DateTime::createFromFormat('Y-m-d', $date_from)->getTimestamp();
+	$timestamp_to = DateTime::createFromFormat('Y-m-d', $date_to)->getTimestamp();
+	
+	error_log("|timestamp_from=".$timestamp_from." timestamp_to=".$timestamp_to."|");
+	
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+	
+	permissionAdminInGroup($user_id,$contractorid,$db_profile);
+		
+	$groups = $db_fabricant->getAnalyticGroupsOfContractor($contractorid);
+	$extended_groups=array();
+	
+	$tea_ids=$db_fabricant->getAnalyticProductsIdsWithTag("kustuk_tea");
+	$coffee_ids=$db_fabricant->getAnalyticProductsIdsWithTag("kustuk_coffee");
+	
+	foreach($groups as $group){
+	
+		$groupid=$group["id"];
+		$tea_summ=0;
+		$coffee_summ=0;
+		
+		$orders=$db_fabricant->getAnalyticCustomerOrders($contractorid, $groupid, $timestamp_from, $timestamp_to);
+		
+		foreach($orders as $order){
+			$record=json_decode($order["record"],true);
+			$items=$record["items"];
+			
+			foreach($items as $item){
+				$productid=$item["productid"];
+				$amount=$item["productid"];
+			
+				if(in_array($productid,$tea_ids)){
+					$tea_summ+=$item["amount"];
+				}				
+				if(in_array($productid,$coffee_ids)){
+					$coffee_summ+=$item["amount"];
+				}
+				
+			}
+			
+		}
+		
+		$coffe_akb_flag=$coffee_summ>$coffee_akb_summ;
+		$tea_akb_flag=$tea_summ>$tea_akb_summ;
+		
+		$group["tea_summ"]=$tea_summ;
+		$group["coffee_summ"]=$coffee_summ;
+		$group["coffe_akb_flag"]=$coffe_akb_flag;
+		$group["tea_akb_flag"]=$tea_akb_flag;
+		
+		$extended_groups[]=$group;
+	}
+	
+	if ($groups) {
+		$response["error"] = false;
+		$response["success"] = 1;		
+		$response["message"] = "Success. Groups count=".count($groups);		
+		$response["groups"] = $extended_groups;
+		
+	}
+	else {
+		$response["error"] = true;
+		$response["success"] = 0;
+		$response["message"] = "Failed to get groups list. Please try again";
+	}
+	
+	
+
+	echoResponse(200, $response);
+});
+
+/**
+ * Получаем все заказы контрактора
+ * Возвращаемое значение - краткая информация по заказам
+ * method POST
+ */
+$app->post('/analytic_admin_kustuk/orders/:date_from/:date_to', 'authenticate', function($date_from,$date_to) use ($app) {
+
+	global $user_id;	
+	$contractorid=127;//Kustuk id
+	
+	// array for final json response
+	$response = array();
+
+	error_log("-------------/analytic_admin_kustuk/orders----------------");
+	error_log("|user_id=".$user_id." contractorid=".$contractorid." date_from=".$date_from." date_to=".$date_to."|");
+
+	$timestamp_from = DateTime::createFromFormat('Y-m-d', $date_from)->getTimestamp();
+	$timestamp_to = DateTime::createFromFormat('Y-m-d', $date_to)->getTimestamp();
+	
+	error_log("|timestamp_from=".$timestamp_from." timestamp_to=".$timestamp_to."|");
+	
+	if(empty($timestamp_from) || empty($timestamp_to)){
+		$response["error"] = true;
+		$response["success"] = 0;
+		$response["message"] = "Date format incorrect";
+		echoResponse(200, $response);
+	}
+	
+	$db_profile=new DbHandlerProfile();
+	$db_fabricant = new DbHandlerFabricant();
+	
+	permissionAdminInGroup($user_id,$contractorid,$db_profile);
+	
+	
+	$orders = $db_fabricant->getAnalyticAdminOrders($contractorid, $timestamp_from, $timestamp_to);
+	if ($orders) {
+		$response["error"] = false;
+		$response["success"] = 1;
+		$response["message"] = "Success. Orders count=".count($orders);
+		$response["customers"] = $orders;
+		
+	}else {
+		$response["error"] = true;
+		$response["success"] = 0;
+		$response["message"] = "Failed to get orders list. Please try again";
+	}
+	
+	
+
+	echoResponse(200, $response);
+});
+
+//--------------------------------------------
+
 /**
  * Получаем список магазинов у которые входят в базу 90
  * Обновляет только таблиуцу analytic_groups, и только те строки которые есть в excel
@@ -5355,14 +5508,14 @@ $app->post('/analytic_groups_add_tag_kustuk_90', 'authenticate', function() use 
  * Обновляет только таблиуцу analytic_products, и только те строки которые есть в excel
  * method POST
  */
-$app->post('/analytic_products_tea_coffee', 'authenticate', function() use ($app) {
+$app->post('/analytic_products_tea_coffee_mml', 'authenticate', function() use ($app) {
 	global $user_id;	
 	$contractorid=127;//Kustuk id
 	
 	// array for final json response
 	$response = array();
 
-	error_log("-------------analytic_products_tea_coffee----------------");
+	error_log("-------------analytic_products_tea_coffee_mml----------------");
 	error_log("|user_id=".$user_id." contractorid=".$contractorid."|");
 
 	$db_profile=new DbHandlerProfile();
@@ -5419,6 +5572,7 @@ $app->post('/analytic_products_tea_coffee', 'authenticate', function() use ($app
 		$id=$cells[0];
 		$tea_flag=($cells[13]==1);
 		$coffee_flag=($cells[14]==1);
+		$mml_id=$cells[15];
 		
 		if(!empty($id)){
 			$product=array();
@@ -5426,10 +5580,20 @@ $app->post('/analytic_products_tea_coffee', 'authenticate', function() use ($app
 			
 			if($tea_flag){
 				$db_fabricant->addTagToAnalyticProduct("kustuk_tea",$id);
+			}else{
+				$db_fabricant->removeTagFromAnalyticProduct("kustuk_tea",$id);
 			}
 			
 			if($coffee_flag){
 				$db_fabricant->addTagToAnalyticProduct("kustuk_coffee",$id);
+			}else{
+				$db_fabricant->removeTagFromAnalyticProduct("kustuk_coffee",$id);
+			}
+			
+			if(!empty($mml_id)){
+				$db_fabricant->setAnalyticProductParam($id,"mml_id",$mml_id);
+			}else{
+				$db_fabricant->removeAnalyticProductParam($id,"mml_id");
 			}
 			
 			$product["info"]=$db_fabricant->getAnalyticProductById($id)["info"];		
@@ -5450,6 +5614,7 @@ $app->post('/analytic_products_tea_coffee', 'authenticate', function() use ($app
 	
 	$response["tea_products"]=$db_fabricant->getAnalyticProductsIdsWithTag("kustuk_tea");
 	$response["coffee_products"]=$db_fabricant->getAnalyticProductsIdsWithTag("kustuk_coffee");
+	$response["mml_products"]=$db_fabricant->getAnalyticProductsIdsWithParamKey("mml_id");
 		
 	echoResponse(200,$response);
 

@@ -1371,7 +1371,7 @@ class DbHandlerFabricant extends DbHandler{
 
 	//---------------------Analytic-------------------------------------
 	
-	//CRM
+	//CRM Agent
 	
 	public function getAnalyticAgentOrders($contractorid, $userid, $timestamp_from, $timestamp_to) {
 
@@ -1417,6 +1417,56 @@ class DbHandlerFabricant extends DbHandler{
 
 	            $orders[]=$res;
 	        }
+            $stmt->close();
+			
+			return $orders;
+
+        }else{
+			return NULL;
+		}
+		
+    }
+	
+	public function getAnalyticAdminOrders($contractorid, $timestamp_from, $timestamp_to) {
+
+        $stmt = $this->conn->prepare("
+			SELECT o.id, o.contractorid, o.customerid, SUBSTRING_INDEX( SUBSTRING_INDEX(o.record, '\"customerUserId\":', -1),',',1 ) as `customerUserId`, SUBSTRING_INDEX( SUBSTRING_INDEX(o.record, '\"customerUserName\":\"', -1),'\",',1 ) as `customerUserName`, SUBSTRING_INDEX( SUBSTRING_INDEX(o.record, '{\"itemsAmount\":', -1),'}',1 ) as `amount`, o.code1c IS NOT NULL AS `imported`, o.status, o.created_at, o.changed_at 
+			FROM orders o 			
+			WHERE ( (o.contractorid = ?)  AND ( o.changed_at >= ? ) AND ( o.changed_at <= ? ) ) 
+			");
+
+		$date_from_string=date('Y-m-d H:i:s',$timestamp_from);
+		$date_to_string=date('Y-m-d H:i:s',$timestamp_to);
+
+        $stmt->bind_param( "iss", $contractorid,$date_from_string,$date_to_string);
+
+		$orders=array();
+
+        if ($stmt->execute()) {
+
+            $stmt->bind_result($id,$contractorid,$customerid,$customerUserId,$customerUserName,$amount,$imported, $status, $created_at, $changed_at);
+
+            while($stmt->fetch()){
+
+	            $res= array();
+	            $res["id"] = $id;
+				$res["contractorid"] = $contractorid;
+	            $res["customerid"] = $customerid;
+				$res["customerUserId"] = $customerUserId;
+				$res["customerUserName"] = $customerUserName;
+				$res["amount"] = $amount;
+				$res["imported"] = $imported;
+	            $res["status"] = $status;
+				
+				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
+				$res["created_at"] = $timestamp_object->getTimestamp();
+
+	            $timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+				$res["changed_at"] = $timestamp_object->getTimestamp();
+
+	            $orders[]=$res;
+	        }
+			
             $stmt->close();
 			
 			return $orders;
@@ -1506,6 +1556,58 @@ class DbHandlerFabricant extends DbHandler{
 					$res["address"]=$address;
 					$res["status"]=$status;
 					$res["status_in_group"]=$status_in_group;
+					$res["kustuk_90"]=$kustuk_90;
+
+					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
+					$res["created_at"]=$timestamp_object->getTimestamp();
+
+					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $changed_at);
+					$res["changed_at"] = $timestamp_object->getTimestamp();
+
+					$result[]=$res;
+				}
+				$stmt->close();
+
+				return $result;
+			}else{
+				return NULL;
+			}
+
+    }
+		
+    public function getAnalyticGroupsOfContractor($contractorid) {
+
+            $stmt = $this->conn->prepare("
+				SELECT `g`.id, `g`.name, `g`.address, `g`.status, IF (`ag`.info REGEXP '\"kustuk_90\"',TRUE,FALSE) AS `kustuk_90`, `g`.created_at, `g`.changed_at  
+				FROM (
+					SELECT o.customerid AS groupid FROM orders AS o 
+					LEFT JOIN analytic_groups AS ag ON o.customerid = ag.groupid 
+                    WHERE o.contractorid = ? 
+					UNION 
+					SELECT o.customerid AS groupid FROM orders AS o 
+					RIGHT JOIN analytic_groups AS ag ON o.customerid = ag.groupid 
+                    WHERE o.contractorid = ? 
+				) AS c
+				LEFT JOIN `groups` AS `g` ON `c`.groupid=`g`.id 
+				LEFT OUTER JOIN `analytic_groups` AS `ag` ON `c`.groupid=`ag`.groupid 					
+				
+				");
+
+			$stmt->bind_param("ii", $contractorid, $contractorid);
+
+			if($stmt->execute()){
+
+				$stmt->bind_result($id,$name,$address,$status,$kustuk_90,$created_at,$changed_at);
+
+				$result=array();
+
+				while($stmt->fetch()){
+					$res=array();
+
+					$res["id"]=$id;
+					$res["name"]=$name;
+					$res["address"]=$address;
+					$res["status"]=$status;
 					$res["kustuk_90"]=$kustuk_90;
 
 					$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
@@ -1696,6 +1798,29 @@ class DbHandlerFabricant extends DbHandler{
 		}
 	}
 	
+	/*
+	* Возвращает множество id продуктов у которого существует заданный параметр
+	*/
+	public function getAnalyticProductsIdsWithParamKey($key){
+		
+		$stmt = $this->conn->prepare("SELECT productid FROM analytic_products WHERE `info` REGEXP '\"$key\":' ");
+		
+		$result=array();
+		
+		if ($stmt->execute()){
+			$stmt->store_result();
+			if($stmt->num_rows==0) return $result;
+			$stmt->bind_result($productid);
+			while($stmt->fetch()){
+				$result[]=$productid;
+			}
+			$stmt->close();
+			return $result;
+		} else {
+			return $result;
+		}
+	}
+	
 	public function getAnalyticProductById($productid) {
 
             $stmt = $this->conn->prepare("
@@ -1838,6 +1963,44 @@ class DbHandlerFabricant extends DbHandler{
 		}
 		
 		return false;
+	}
+	
+	public function setAnalyticProductParam($productid,$key,$value){
+
+		$product=$this->getAnalyticProductById($productid);
+
+		if(!isset($product))
+			$product=array();
+
+		if(!isset($product["info"])){
+			$product["info"]="{}";
+		}
+
+		$info=json_decode($product["info"],true);
+		
+		$info[$key]=$value;
+
+		$this->setAnalyticProductInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $productid);
+
+	}
+	
+	public function removeAnalyticProductParam($productid,$key){
+
+		$product=$this->getAnalyticProductById($productid);
+
+		if(!isset($product))
+			$product=array();
+
+		if(!isset($product["info"])){
+			$product["info"]="{}";
+		}
+
+		$info=json_decode($product["info"],true);
+		
+		unset($info[$key]);
+
+		$this->setAnalyticProductInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $productid);
+
 	}
 
 	//Reports
