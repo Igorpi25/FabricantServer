@@ -5149,10 +5149,49 @@ $app->post('/analytic_agent_kustuk/:agentid/groups/', 'authenticate', function($
 	$tea_ids=$db_fabricant->getAnalyticProductsIdsWithTag("kustuk_tea");
 	$coffee_ids=$db_fabricant->getAnalyticProductsIdsWithTag("kustuk_coffee");
 	
+	//Множество ИД продуктов ММЛ
+	$mml_ids=$db_fabricant->getAnalyticProductsIdsWithParamKey("mml_id");
+	
+	//Множество ИД продуктов ММЛ, чай/кофе по отдельности
+	$mml_ids_tea=array();
+	$mml_ids_coffee=array();
+	
+	//Информация о ММЛ продуктах (имя, цена и т.п.)
+	$mml_products_tea=array();
+	$mml_products_coffee=array();
+	
+	//Формирование информации об ММЛ продуктах, заодно отделяем чай от кофе
+	foreach($mml_ids as $mml_id){
+		$product=$db_fabricant->getProductById($mml_id);
+		
+		$mml_product=array();
+		$mml_product["id"]=$product["id"];
+		$mml_product["article"]=$product["article"];
+		$mml_product["name"]=$product["name"];
+		$mml_product["price"]=$product["price"];
+		
+		if(in_array($mml_id,$tea_ids)){
+			$mml_products_tea[]=$mml_id;
+			$mml_ids_tea[]=$mml_id;
+		}		
+		
+		if(in_array($mml_id,$coffee_ids)){
+			$mml_products_coffee[]=$mml_id;
+			$mml_ids_coffee[]=$mml_id;
+		}
+	}
+	
+	//Количество магазинов где ММЛ выполнен (чай/кофе соответственно)
+	$mml_tea_done_groups_count=0;
+	$mml_coffee_done_groups_count=0;
+	
+	
 	foreach($groups as $group){		
 		$groupid=$group["id"];
 		$tea_summ=0;
 		$coffee_summ=0;
+		
+		$group_mml_tea=array();
 		
 		$orders=$db_fabricant->getAnalyticCustomerOrders($contractorid, $groupid, $timestamp_from, $timestamp_to);
 		
@@ -5162,13 +5201,22 @@ $app->post('/analytic_agent_kustuk/:agentid/groups/', 'authenticate', function($
 			
 			foreach($items as $item){
 				$productid=$item["productid"];
-				$amount=$item["productid"];
+				$amount=$item["amount"];
+				$count=$item["count"];
 			
 				if(in_array($productid,$tea_ids)){
 					$tea_summ+=$item["amount"];
 				}				
 				if(in_array($productid,$coffee_ids)){
 					$coffee_summ+=$item["amount"];
+				}
+				
+				if(in_array($productid,$mml_ids_tea)){
+					$group_mml_tea_products_count[strval($productid)]=( (isset($group_mml_tea_products_count[strval($productid)])) ? $group_mml_tea_products_count[strval($productid)] : 0 ) + $count;
+				}
+				
+				if(in_array($productid,$mml_ids_coffee)){
+					$group_mml_coffee_products_count[strval($productid)]=( (isset($group_mml_coffee_products_count[strval($productid)])) ? $group_mml_coffee_products_count[strval($productid)] : 0 ) + $count;
 				}
 				
 			}
@@ -5178,12 +5226,29 @@ $app->post('/analytic_agent_kustuk/:agentid/groups/', 'authenticate', function($
 		$coffe_akb_flag=$coffee_summ>$coffee_akb_summ;
 		$tea_akb_flag=$tea_summ>$tea_akb_summ;
 		
+		//Значения АКБ чай/кофе
 		$group["tea_summ"]=$tea_summ;
 		$group["coffee_summ"]=$coffee_summ;
-		$group["coffe_akb_flag"]=$coffe_akb_flag;
-		$group["tea_akb_flag"]=$tea_akb_flag;
+		$group["coffe_done"]=$coffe_akb_flag;
+		$group["tea_done"]=$tea_akb_flag;
+		
+		//Сколько прогружено для каждого ММЛ продукта (отправляем потому-что информация у нас все-равно собирается, про идее не требуется)
+		$group["mml_tea_products_counts"]=$group_mml_tea_products_count;
+		$group["mml_coffee_products_counts"]=$group_mml_coffee_products_count;
+		
+		//Выполнено ли ММЛ
+		$group["mml_tea_done"]=( count($group_mml_tea_products_count)==count($mml_ids_tea) );
+		$group["mml_coffee_done"]=( count($group_mml_coffee_products_count)==count($mml_ids_coffee) );
+		
+		//Количество до выполнения ММЛ
+		$group["mml_tea_count"]=count($mml_ids_tea);
+		$group["mml_coffee_count"]=count($mml_ids_coffee);
 		
 		$extended_groups[]=$group;
+		
+		//Для общей ММЛ по всем группам
+		if($group["mml_tea_done"])$mml_tea_done_groups_count++;
+		if($group["mml_coffee_done"])$mml_coffee_done_groups_count++;
 	}
 	
 	if ($groups) {
@@ -5191,6 +5256,14 @@ $app->post('/analytic_agent_kustuk/:agentid/groups/', 'authenticate', function($
 		$response["success"] = 1;		
 		$response["message"] = "Success. Groups count=".count($groups);		
 		$response["groups"] = $extended_groups;
+		
+		//Информация об продуктах ММЛ (цена, имя, и т.п)
+		$response["mml_products_tea"] = $mml_products_tea;
+		$response["mml_products_coffee"] = $mml_products_coffee;
+		
+		//Количество магазинов где ММЛ выполнен (чай/кофе соответственно)
+		$response["mml_tea_done_groups_count"] = $mml_tea_done_groups_count;
+		$response["mml_coffee_done_groups_count"] = $mml_coffee_done_groups_count;
 		
 	}
 	else {
