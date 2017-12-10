@@ -1480,7 +1480,7 @@ class DbHandlerFabricant extends DbHandler{
 	public function getAnalyticCustomerOrders($contractorid, $customerid, $timestamp_from, $timestamp_to) {
 
         $stmt = $this->conn->prepare("
-			SELECT o.id, o.contractorid, o.customerid, o.record, o.status, o.created_at, o.changed_at 
+			SELECT o.id, o.contractorid, o.customerid, o.record, o.status, o.code1c, o.created_at, o.changed_at 
 			FROM orders o
 			WHERE ( (o.contractorid = ?)  AND (o.customerid = ?) AND ( o.status IN (1,2) ) AND ( o.changed_at >= ? ) AND ( o.changed_at <= ? ) ) ");
 
@@ -1493,7 +1493,7 @@ class DbHandlerFabricant extends DbHandler{
 
         if ($stmt->execute()) {
 
-            $stmt->bind_result($id,$contractorid,$customerid,$record, $status, $created_at, $changed_at);
+            $stmt->bind_result($id,$contractorid,$customerid,$record, $status,$code1c, $created_at, $changed_at);
 
             while($stmt->fetch()){
 
@@ -1503,6 +1503,7 @@ class DbHandlerFabricant extends DbHandler{
 	            $res["customerid"] = $customerid;
 				$res["record"] = $record;
 	            $res["status"] = $status;
+				$res["code1c"] = $code1c;
 				
 				$timestamp_object = DateTime::createFromFormat('Y-m-d H:i:s', $created_at);
 				$res["created_at"] = $timestamp_object->getTimestamp();
@@ -1982,6 +1983,27 @@ class DbHandlerFabricant extends DbHandler{
 
 		$this->setAnalyticProductInfo(json_encode($info,JSON_UNESCAPED_UNICODE), $productid);
 
+	}
+	
+	public function getAnalyticProductParam($productid,$key){
+
+		$product=$this->getAnalyticProductById($productid);
+
+		if(!isset($product))
+			return null;
+
+		if(!isset($product["info"])){
+			return null;
+		}
+
+		$info=json_decode($product["info"],true);
+		
+		if(isset($info[$key])){
+			return $info[$key];
+		}else{
+			return null;
+		}
+		
 	}
 	
 	public function removeAnalyticProductParam($productid,$key){

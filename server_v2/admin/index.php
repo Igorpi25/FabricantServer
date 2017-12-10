@@ -3342,7 +3342,7 @@ $app->post('/1c_products_report', function() use ($app) {
 
 });
 
-//------------------------Kustuk----------------------------------
+//------------------------Kustuk-------------------------
 
 function makeUnitsFromString($units_pairs_string){
 
@@ -5102,7 +5102,7 @@ $app->get('/check_products_uts_compatable', 'authenticate',function() use ($app)
 	echoResponse(200, $response);
 });
 
-//-------------------------------Kustuk Analytic-------------------------------
+//----------------------Kustuk Analytic------------------
 
 //------------------CRM Agent----------------
 
@@ -5160,15 +5160,22 @@ $app->post('/analytic_agent_kustuk/:agentid/groups/', 'authenticate', function($
 	$mml_products_tea=array();
 	$mml_products_coffee=array();
 	
+	//Key-value productid=>mml_id, чтобы быстро найти ММЛ-ИД по productid
+	$productid_mmlid=array();
+	
 	//Формирование информации об ММЛ продуктах, заодно отделяем чай от кофе
 	foreach($mml_ids as $mml_id){
 		$product=$db_fabricant->getProductById($mml_id);
+		
+		//ММЛ-id продукта (Не обычный ИД)
+		$value_of_mml_id=$db_fabricant->getAnalyticProductParam($mml_id,"mml_id");
 		
 		$mml_product=array();
 		$mml_product["id"]=$product["id"];
 		$mml_product["article"]=$product["article"];
 		$mml_product["name"]=$product["name"];
 		$mml_product["price"]=$product["price"];
+		$mml_product["mml_id"]=$value_of_mml_id;
 		
 		if(in_array($mml_id,$tea_ids)){
 			$mml_products_tea[]=$mml_product;
@@ -5179,6 +5186,8 @@ $app->post('/analytic_agent_kustuk/:agentid/groups/', 'authenticate', function($
 			$mml_products_coffee[]=$mml_product;
 			$mml_ids_coffee[]=$mml_id;
 		}
+		
+		$productid_mmlid[strval($product["id"])]=$value_of_mml_id;
 	}
 	
 	//Количество магазинов где АКБ выполнен (чай/кофе соответственно)
@@ -5201,27 +5210,53 @@ $app->post('/analytic_agent_kustuk/:agentid/groups/', 'authenticate', function($
 		$orders=$db_fabricant->getAnalyticCustomerOrders($contractorid, $groupid, $timestamp_from, $timestamp_to);
 		
 		foreach($orders as $order){
+			
+			if( ($order["status"]!=2)||(empty($order["code1c"])) )continue;
+		
 			$record=json_decode($order["record"],true);
 			$items=$record["items"];
 			
 			foreach($items as $item){
+			
 				$productid=$item["productid"];
 				$amount=$item["amount"];
 				$count=$item["count"];
-			
+				
 				if(in_array($productid,$tea_ids)){
 					$tea_summ+=$item["amount"];
-				}				
+				}
+				
 				if(in_array($productid,$coffee_ids)){
 					$coffee_summ+=$item["amount"];
 				}
 				
 				if(in_array($productid,$mml_ids_tea)){
-					$group_mml_tea_products_count[strval($productid)]=( (isset($group_mml_tea_products_count[strval($productid)])) ? $group_mml_tea_products_count[strval($productid)] : 0 ) + $count;
+					
+					//Обходим все ММЛ-продукты с заданным mml_id и добавляем их в массив group_mml_tea_products_count
+					$m_id_of_item=$productid_mmlid[strval($productid)];
+					
+					foreach($productid_mmlid as $p_id=>$m_id){
+						if( ($m_id==$m_id_of_item)&&(!isset($group_mml_tea_products_count[strval($p_id)])) ){
+							$group_mml_tea_products_count[strval($p_id)]=0;
+						}
+					}
+					
+					$group_mml_tea_products_count[strval($productid)]+= $count;			
+					
 				}
 				
 				if(in_array($productid,$mml_ids_coffee)){
-					$group_mml_coffee_products_count[strval($productid)]=( (isset($group_mml_coffee_products_count[strval($productid)])) ? $group_mml_coffee_products_count[strval($productid)] : 0 ) + $count;
+					
+					//Обходим все ММЛ-продукты с заданным m_id и добавляем их в массив group_mml_coffee_products_count
+					$m_id_of_item=$productid_mmlid[strval($productid)];
+					
+					foreach($productid_mmlid as $p_id=>$m_id){
+						if( ($m_id==$m_id_of_item)&&(!isset($group_mml_coffee_products_count[strval($p_id)])) ){
+							$group_mml_coffee_products_count[strval($p_id)]=0;
+						}
+					}
+					
+					$group_mml_coffee_products_count[strval($productid)]+= $count;
 				}
 				
 			}
@@ -5244,7 +5279,7 @@ $app->post('/analytic_agent_kustuk/:agentid/groups/', 'authenticate', function($
 		$group["mml_tea_done"]=( count($group_mml_tea_products_count)==count($mml_ids_tea) );
 		$group["mml_coffee_done"]=( count($group_mml_coffee_products_count)==count($mml_ids_coffee) );
 		
-		//Количество до выполнения ММЛ
+		//Количество прогруженных продуктов ММЛ
 		$group["mml_tea_count"]=count($group_mml_tea_products_count);
 		$group["mml_coffee_count"]=count($group_mml_coffee_products_count);
 		
@@ -5257,6 +5292,8 @@ $app->post('/analytic_agent_kustuk/:agentid/groups/', 'authenticate', function($
 		//Для общей ММЛ по всем группам
 		if($group["mml_tea_done"])$mml_tea_done_groups_count++;
 		if($group["mml_coffee_done"])$mml_coffee_done_groups_count++;
+	
+	
 	}
 	
 	if ($groups) {
@@ -5438,6 +5475,9 @@ $app->post('/analytic_admin_kustuk/groups/:date_from/:date_to', 'authenticate', 
 		$orders=$db_fabricant->getAnalyticCustomerOrders($contractorid, $groupid, $timestamp_from, $timestamp_to);
 		
 		foreach($orders as $order){
+			
+			if( ($order["status"]!=2)||(empty($order["code1c"])) )continue;
+		
 			$record=json_decode($order["record"],true);
 			$items=$record["items"];
 			
